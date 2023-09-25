@@ -1,0 +1,931 @@
+= Normand
+Philippe Proulx
+:toc: left
+
+:py3: Python{nbsp}3
+
+[.normal]
+image:https://img.shields.io/pypi/v/normand.svg?label=Latest%20version[link="https://pypi.python.org/pypi/normand"]
+
+[.lead]
+_**Normand**_ is a text-to-binary processor with its own language.
+
+This package offers both a portable {py3} module and a command-line
+tool.
+
+WARNING: This version of Normand is 0.1, meaning both the Normand
+language and the module/CLI interface aren't stable.
+
+== Introduction
+
+The purpose of Normand is to consume human-readable text representing
+bytes and to produce the corresponding binary data.
+
+.Simple bytes input.
+====
+Consider the following Normand input:
+
+----
+4f 55 32 bb $167 fe %10100111 a9 $-32
+----
+
+The generated nine bytes are:
+
+----
+4f 55 32 bb a7 fe a7 a9  e0
+----
+====
+
+As you can see in the last example, the fundamental unit of the Normand
+language is the _byte_. The order in which you list bytes will be the
+order of the generated data.
+
+The Normand language is more than simple lists of bytes, though. Its
+main features are:
+
+Comments, including a bunch of insignificant symbols which may improve readability::
++
+Input:
++
+----
+ff bb %1101:0010 # This is a comment
+78 29 af $192 # This too # 99 $-80
+fe80::6257:18ff:fea3:4229
+60:57:18:a3:42:29
+10839636-5d65-4a68-8e6a-21608ddf7258
+----
++
+Output:
++
+----
+ff bb d2 78 29 af c0 99  b0 fe 80 62 57 18 ff fe
+a3 42 29 60 57 18 a3 42  29 10 83 96 36 5d 65 4a
+68 8e 6a 21 60 8d df 72  58
+----
+
+Hexadecimal, decimal, and binary byte constants::
++
+Input:
++
+----
+aa bb $247 $-89 %0011_0010 %11.01= 10/10
+----
++
+Output:
++
+----
+aa bb f7 a7 32 da
+----
+
+UTF-8, UTF-16, and UTF-32 literal strings::
++
+Input:
++
+----
+"hello world!" 00
+u16le"stress\nverdict 🤣"
+----
++
+Output:
++
+----
+68 65 6c 6c 6f 20 77 6f  72 6c 64 21 00 73 00 74  ┆ hello world!•s•t
+00 72 00 65 00 73 00 73  00 0a 00 76 00 65 00 72  ┆ •r•e•s•s•••v•e•r
+00 64 00 69 00 63 00 74  00 20 00 3e d8 23 dd     ┆ •d•i•c•t• •>•#•
+----
+
+Labels: special variables holding the offset where they're defined::
++
+----
+<beg> b2 52 e3 bc 91 05
+$100 $50 <chair> 33 9f fe
+25 e9 89 8a <end>
+----
+
+Variables::
++
+----
+5e 65 {tower = 47} c6 7f f2 c4
+44 {hurl = tower - 14} b5 {tower = hurl} 26 2d
+----
++
+The value of a variable assignment is the evaluation of a valid {py3}
+expression which may include label and variable names.
+
+Value encoding with a specific length (8{nbsp}bits to 64{nbsp}bits) and byte order::
++
+Input:
++
+----
+{strength = 4}
+{be} 67 <lbl> 44 $178 {(end - lbl) * 8 + strength : 16} $99 <end>
+{le} {-1993 : 32}
+----
++
+Output:
++
+----
+67 44 b2 00 2c 63 37 f8  ff ff
+----
++
+The encoded value is the evaluation of a valid {py3} expression which
+may include label and variable names.
+
+Repetition::
++
+Input:
++
+----
+aa bb * 5 cc "yeah\0" * 8
+----
++
+Output:
++
+----
+aa bb bb bb bb bb cc 79  65 61 68 00 79 65 61 68  ┆ •••••••yeah.yeah
+00 79 65 61 68 00 79 65  61 68 00 79 65 61 68 00  ┆ •yeah•yeah•yeah•
+79 65 61 68 00 79 65 61  68 00 79 65 61 68 00     ┆ yeah•yeah•yeah•
+----
+
+
+Multilevel grouping::
++
+Input:
++
+----
+ff ((aa bb "zoom" cc) * 5) * 3 $-34 * 4
+----
++
+Output:
++
+----
+ff aa bb 7a 6f 6f 6d cc  aa bb 7a 6f 6f 6d cc aa  ┆ •••zoom•••zoom••
+bb 7a 6f 6f 6d cc aa bb  7a 6f 6f 6d cc aa bb 7a  ┆ •zoom•••zoom•••z
+6f 6f 6d cc aa bb 7a 6f  6f 6d cc aa bb 7a 6f 6f  ┆ oom•••zoom•••zoo
+6d cc aa bb 7a 6f 6f 6d  cc aa bb 7a 6f 6f 6d cc  ┆ m•••zoom•••zoom•
+aa bb 7a 6f 6f 6d cc aa  bb 7a 6f 6f 6d cc aa bb  ┆ ••zoom•••zoom•••
+7a 6f 6f 6d cc aa bb 7a  6f 6f 6d cc aa bb 7a 6f  ┆ zoom•••zoom•••zo
+6f 6d cc aa bb 7a 6f 6f  6d cc de de de de        ┆ om•••zoom•••••
+----
+
+Precise error reporting::
++
+----
+/tmp/meow.normand:10:24 - Expecting a bit (`0` or `1`).
+----
++
+----
+/tmp/meow.normand:32:6 - Unexpected character `k`.
+----
++
+----
+/tmp/meow.normand:24:19 - Unknown variable/label name `meow` in expression `(meow - 45) // 8`.
+----
++
+----
+/tmp/meow.normand:18:9 - Value 315 is outside the 8-bit range when evaluating expression `end - ICITTE` at byte offset 45.
+----
+
+You can use Normand to track data source files in your favorite VCS
+instead of raw binary files. The binary files that Normand generates can
+be used to test file format decoding, including malformatted data, for
+example, as well as for education.
+
+See <<learn-normand>> to explore all the Normand features.
+
+== Install Normand
+
+Normand requires Python ≥ 3.4.
+
+To install Normand:
+
+----
+$ python3 -m pip install --user normand
+----
+
+See
+https://packaging.python.org/en/latest/tutorials/installing-packages/#installing-to-the-user-site[Installing to the User Site]
+to learn more about a user site installation.
+
+[NOTE]
+====
+Normand has a single module file, `normand.py`, which you can copy as is
+to your project to use it (both the <<python-3-api,`normand.parse()`>>
+function and the <<command-line-tool,command-line tool>>).
+
+`normand.py` has _no external dependencies_, but if you're using
+Python{nbsp}3.4, you'll need a local copy of the standard `typing`
+module.
+====
+
+== Learn Normand
+
+A Normand text input is a sequence of items which represent a sequence
+of raw bytes.
+
+[[state]] During the processing of items to data, Normand relies on a
+current state:
+
+[%header%autowidth]
+|===
+|State variable |Description |Initial value: <<python-3-api,{py3} API>> |Initial value: <<command-line-tool,CLI>>
+
+|[[cur-offset]] Current offset
+|
+The current offset has an effect on the value of
+<<label,labels>> and of the special `ICITTE` name in <<value,value>> and
+<<variable-assignment,variable assignment>> expression evaluation.
+
+Each generated byte increments the current offset.
+
+A <<current-offset-setting,current offset setting>> may change the
+current offset.
+|`init_offset` parameter of the `parse()` function.
+|`--offset` option.
+
+|[[cur-bo]] Current byte order
+|
+The current byte order has an effect on the encoding of <<value,values>>.
+
+A <<current-byte-order-setting,current byte order setting>> may change
+the current byte order.
+|`init_byte_order` parameter of the `parse()` function.
+|`--byte-order` option.
+
+|<<label,Labels>>
+|Mapping of label names to integral values.
+|`init_labels` parameter of the `parse()` function.
+|One or more `--label` options.
+
+|<<variable-assignment,Variables>>
+|Mapping of variable names to integral values.
+|`init_variables` parameter of the `parse()` function.
+|One or more `--var` options.
+|===
+
+The available items are:
+
+* A <<byte-constant,constant integer>> representing a single byte.
+
+* A <<literal-string,literal string>> representing a sequence of bytes
+  encoding UTF-8, UTF-16, or UTF-32 data.
+
+* A <<current-byte-order-setting,current byte order setting>> (big or
+  little endian).
+
+* A <<value,{py3} expression to be evaluated>> as an unsigned or signed
+  integer to be encoded on one or more bytes using the current byte
+  order.
+
+* A <<current-offset-setting,current offset setting>>.
+
+* A <<label,label>>, that is, a named constant holding the current
+  offset.
++
+This is similar to an assembly label.
+
+* A <<variable-assignment,variable assignment>> associating a name to
+  the integral result of an evaluated {py3} expression.
+
+* A <<group,group>>, that is, a scoped sequence of items.
+
+Moreover, you can <<repetition,repeat>> any item above, except an offset
+or a label, a given number of times. This is called a repetition.
+
+A Normand comment may exist:
+
+* Between items, possibly within a group.
+* Between the nibbles of a constant hexadecimal byte.
+* Between the bits of a constant binary byte.
+* Between the last item and the ``pass:[*]`` character of a repetition,
+  and between that ``pass:[*]`` character and the following number.
+
+A comment is anything between two ``pass:[#]`` characters on the same
+line, or from ``pass:[#]`` until the end of the line. Whitespaces and
+the following symbol characters are also considered comments where a
+comment may exist:
+
+----
+! @ / \ ? & : ; . , + [ ] _ = | -
+----
+
+The latter serve to improve readability so that you may write, for
+example, a MAC address or a UUID as is.
+
+You can test the examples of this section with the `normand`
+<<command-line-tool,command-line tool>> as such:
+
+----
+$ normand file | hexdump -C
+----
+
+where `file` is the name of a file containing the Normand input.
+
+=== Byte constant
+
+A _byte constant_ represents a single byte.
+
+A byte constant is:
+
+Hexadecimal form::
+    Two consecutive hexits.
+
+Decimal form::
+    A decimal number after the `$` prefix.
+
+Binary form::
+    Eight bits after the `%` prefix.
+
+====
+Input:
+
+----
+ab cd [3d 8F] CC
+----
+
+Output:
+
+----
+ab cd 3d 8f cc
+----
+====
+
+====
+Input:
+
+----
+$192 %1100/0011 $ -77
+----
+
+Output:
+
+----
+c0 c3 b3
+----
+====
+
+====
+Input:
+
+----
+58f64689-6316-4d55-8a1a-04cada366172
+fe80::6257:18ff:fea3:4229
+----
+
+Output:
+
+----
+58 f6 46 89 63 16 4d 55  8a 1a 04 ca da 36 61 72  ┆ X•F•c•MU•••••6ar
+fe 80 62 57 18 ff fe a3  42 29                    ┆ ••bW••••B)
+----
+====
+
+====
+Input:
+
+----
+%01110011 %01100001 %01101100 %01110101 %01110100
+----
+
+Output:
+
+----
+73 61 6c 75 74  ┆ salut
+----
+====
+
+=== Literal string
+
+A _literal string_ represents the UTF-8-, UTF-16-, or UTF-32-encoded
+bytes of a string.
+
+The string to encode isn't implicitly null-terminated: use `\0` at the
+end of the string to add a null character.
+
+A literal string is:
+
+. **Optional**: one of the following encodings instead of UTF-8:
++
+--
+[horizontal]
+`u16be`:: UTF-16BE.
+`u16le`:: UTF-16LE.
+`u32be`:: UTF-32BE.
+`u32le`:: UTF-32LE.
+--
+
+. The ``pass:["]`` prefix.
+
+. A sequence of zero or more characters, possibly containing escape
+  sequences.
++
+An escape sequence is the ``\`` character followed by one of:
++
+--
+[horizontal]
+`0`:: Null (U+0000)
+`a`:: Alert (U+0007)
+`b`:: Backspace (U+0008)
+`e`:: Escape (U+001B)
+`f`:: Form feed (U+000C)
+`n`:: End of line (U+000A)
+`r`:: Carriage return (U+000D)
+`t`:: Character tabulation (U+0009)
+`v`:: Line tabulation (U+000B)
+``\``:: Reverse solidus (U+005C)
+``pass:["]``:: Quotation mark (U+0022)
+--
+
+. The ``pass:["]`` suffix.
+
+====
+Input:
+
+----
+"coucou tout le monde!"
+----
+
+Output:
+
+----
+63 6f 75 63 6f 75 20 74  6f 75 74 20 6c 65 20 6d  ┆ coucou tout le m
+6f 6e 64 65 21                                    ┆ onde!
+----
+====
+
+====
+Input:
+
+----
+u16le"I am not young enough to know everything."
+----
+
+Output:
+
+----
+49 00 20 00 61 00 6d 00  20 00 6e 00 6f 00 74 00  ┆ I• •a•m• •n•o•t•
+20 00 79 00 6f 00 75 00  6e 00 67 00 20 00 65 00  ┆  •y•o•u•n•g• •e•
+6e 00 6f 00 75 00 67 00  68 00 20 00 74 00 6f 00  ┆ n•o•u•g•h• •t•o•
+20 00 6b 00 6e 00 6f 00  77 00 20 00 65 00 76 00  ┆  •k•n•o•w• •e•v•
+65 00 72 00 79 00 74 00  68 00 69 00 6e 00 67 00  ┆ e•r•y•t•h•i•n•g•
+2e 00                                             ┆ .•
+----
+====
+
+====
+Input:
+
+----
+u32be "\"illusion is the first\nof all pleasures\" 🦉"
+----
+
+Output:
+
+----
+00 00 00 22 00 00 00 69  00 00 00 6c 00 00 00 6c  ┆ •••"•••i•••l•••l
+00 00 00 75 00 00 00 73  00 00 00 69 00 00 00 6f  ┆ •••u•••s•••i•••o
+00 00 00 6e 00 00 00 20  00 00 00 69 00 00 00 73  ┆ •••n••• •••i•••s
+00 00 00 20 00 00 00 74  00 00 00 68 00 00 00 65  ┆ ••• •••t•••h•••e
+00 00 00 20 00 00 00 66  00 00 00 69 00 00 00 72  ┆ ••• •••f•••i•••r
+00 00 00 73 00 00 00 74  00 00 00 0a 00 00 00 6f  ┆ •••s•••t•••••••o
+00 00 00 66 00 00 00 20  00 00 00 61 00 00 00 6c  ┆ •••f••• •••a•••l
+00 00 00 6c 00 00 00 20  00 00 00 70 00 00 00 6c  ┆ •••l••• •••p•••l
+00 00 00 65 00 00 00 61  00 00 00 73 00 00 00 75  ┆ •••e•••a•••s•••u
+00 00 00 72 00 00 00 65  00 00 00 73 00 00 00 22  ┆ •••r•••e•••s•••"
+00 00 00 20 00 01 f9 89                           ┆ ••• ••••
+----
+====
+
+=== Current byte order setting
+
+This special item sets the <<cur-bo,_current byte order_>>.
+
+The two accepted forms are:
+
+[horizontal]
+``pass:[{be}]``:: Set the current byte order to big endian.
+``pass:[{le}]``:: Set the current byte order to little endian.
+
+=== Value
+
+A _value_ represents a fixed number of bytes encoding an unsigned or
+signed integer which is the result of evaluating a {py3} expression
+using the <<cur-bo,current byte order>>.
+
+For a value at some source location{nbsp}__**L**__, its {py3} expression
+may contain the name of any accessible <<label,label>>, including the
+name of a label defined after{nbsp}__**L**__, as well as the name of any
+<<variable-assignment,variable>> known at{nbsp}__**L**__.
+
+An accessible label is either:
+
+* Outside of the current <<group,group>>.
+* Within the same immediate group (not within a nested group).
+
+In the {py3} expression of a value, the value of the special name
+`ICITTE` is the <<cur-offset,current offset>> (before encoding the
+value).
+
+A value is:
+
+. The ``pass:[{]`` prefix.
+
+. A valid {py3} expression.
+
+. The `:` character.
+
+. An encoding length in bits amongst `8`, `16`, `24`, `32`, `40`,
+  `48`, `56`, and `64`.
+
+. The `}` suffix.
+
+====
+Input:
+
+----
+{le} {345:16}
+{be} {-0xabcd:32}
+----
+
+Output:
+
+----
+59 01 ff ff 54 33
+----
+====
+
+====
+Input:
+
+----
+{be}
+
+# String length in bits
+{8 * (str_end - str_beg) : 16}
+
+# String
+<str_beg>
+  "hello world!"
+<str_end>
+----
+
+Output:
+
+----
+00 60 68 65 6c 6c 6f 20  77 6f 72 6c 64 21  ┆ •`hello world!
+----
+====
+
+====
+Input:
+
+----
+{20 - ICITTE : 8} * 10
+----
+
+Output:
+
+----
+14 13 12 11 10 0f 0e 0d  0c 0b
+----
+====
+
+=== Current offset setting
+
+This special item sets the <<cur-offset,_current offset_>>.
+
+A current offset setting is:
+
+. The `<` prefix.
+
+. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
+  which is the new current offset.
+
+. The `>` suffix.
+
+====
+Input:
+
+----
+       {ICITTE : 8} * 8
+<0x61> {ICITTE : 8} * 8
+----
+
+Output:
+
+----
+00 01 02 03 04 05 06 07  61 62 63 64 65 66 67 68  ┆ ••••••••abcdefgh
+----
+====
+
+====
+Input:
+
+----
+aa bb cc dd <meow> ee ff
+<12> 11 22 33 <mix> 44 55
+{meow : 8} {mix : 8}
+----
+
+Output:
+
+----
+aa bb cc dd ee ff 11 22  33 44 55 04 0f  ┆ •••••••"3DU••
+----
+====
+
+=== Label
+
+A _label_ associates a name to the <<cur-offset,current offset>>.
+
+All the labels of a whole Normand input must have unique names.
+
+A label may not share the name of a <<variable-assignment,variable>>
+name.
+
+A label name may not be `ICITTE` (see <<value>> and
+<<variable-assignment>> to learn more).
+
+A label is:
+
+. The `<` prefix.
+
+. A valid {py3} name which is not `ICITTE`.
+
+. The `>` suffix.
+
+=== Variable assignment
+
+A _variable assignment_ associates a name to the integral result of an
+evaluated {py3} expression.
+
+For a variable assignment at some source location{nbsp}__**L**__, its
+{py3} expression may contain the name of any accessible <<label,label>>,
+including the name of a label defined after{nbsp}__**L**__, as well as
+the name of any variable known at{nbsp}__**L**__.
+
+An accessible label is either:
+
+* Outside of the current <<group,group>>.
+* Within the same immediate group (not within a nested group).
+
+A variable name may not be `ICITTE` (see <<value>> and
+<<variable-assignment>> to learn more).
+
+In the {py3} expression of a variable assignment, the special name
+`ICITTE` is the <<cur-offset,current offset>>.
+
+A variable is:
+
+. The ``pass:[{]`` prefix.
+
+. A valid {py3} name which is not `ICITTE`.
+
+. The `=` character.
+
+. A valid {py3} expression.
+
+. The `}` suffix.
+
+====
+Input:
+
+----
+{mix = 101} {le}
+{meow = 42} 11 22 {meow:8} 33 {meow = ICITTE + 17}
+"yooo" {meow + mix : 16}
+----
+
+Output:
+
+----
+11 22 2a 33 79 6f 6f 6f  7a 00  ┆ •"*3yoooz•
+----
+====
+
+=== Group
+
+A _group_ is a scoped sequence of items.
+
+The <<label,labels>> within a group aren't visible outside of it.
+
+The main purpose of a group is to <<repetition,repeat>> more than a
+single item.
+
+A group is:
+
+. The `(` prefix.
+
+. Zero or more items.
+
+. The `)` suffix.
+
+====
+Input:
+
+----
+((aa bb cc) dd () ee) "leclerc"
+----
+
+Output:
+
+----
+aa bb cc dd ee 6c 65 63  6c 65 72 63  ┆ •••••leclerc
+----
+====
+
+====
+Input:
+
+----
+((aa bb cc) * 3 dd ee) * 5
+----
+
+Output:
+
+----
+aa bb cc aa bb cc aa bb  cc dd ee aa bb cc aa bb
+cc aa bb cc dd ee aa bb  cc aa bb cc aa bb cc dd
+ee aa bb cc aa bb cc aa  bb cc dd ee aa bb cc aa
+bb cc aa bb cc dd ee
+----
+====
+
+====
+Input:
+
+----
+{be}
+(
+  <str_beg> u16le"sébastien diaz" <str_end>
+  {ICITTE - str_beg : 8}
+  {(end - str_beg) * 5 : 24}
+) * 3
+<end>
+----
+
+Output:
+
+----
+73 00 e9 00 62 00 61 00  73 00 74 00 69 00 65 00  ┆ s•••b•a•s•t•i•e•
+6e 00 20 00 64 00 69 00  61 00 7a 00 1c 00 01 e0  ┆ n• •d•i•a•z•••••
+73 00 e9 00 62 00 61 00  73 00 74 00 69 00 65 00  ┆ s•••b•a•s•t•i•e•
+6e 00 20 00 64 00 69 00  61 00 7a 00 1c 00 01 40  ┆ n• •d•i•a•z••••@
+73 00 e9 00 62 00 61 00  73 00 74 00 69 00 65 00  ┆ s•••b•a•s•t•i•e•
+6e 00 20 00 64 00 69 00  61 00 7a 00 1c 00 00 a0  ┆ n• •d•i•a•z•••••
+----
+====
+
+=== Repetition
+
+A _repetition_ represents the bytes of an item repeated a given number
+of times.
+
+A repetition is:
+
+. Any item.
+
+. The ``pass:[*]`` character.
+
+. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
+  which is the number of times to repeat the previous item.
+
+====
+Input:
+
+----
+{end - ICITTE - 1 : 8} * 0x100 <end>
+----
+
+Output:
+
+----
+ff fe fd fc fb fa f9 f8  f7 f6 f5 f4 f3 f2 f1 f0  ┆ ••••••••••••••••
+ef ee ed ec eb ea e9 e8  e7 e6 e5 e4 e3 e2 e1 e0  ┆ ••••••••••••••••
+df de dd dc db da d9 d8  d7 d6 d5 d4 d3 d2 d1 d0  ┆ ••••••••••••••••
+cf ce cd cc cb ca c9 c8  c7 c6 c5 c4 c3 c2 c1 c0  ┆ ••••••••••••••••
+bf be bd bc bb ba b9 b8  b7 b6 b5 b4 b3 b2 b1 b0  ┆ ••••••••••••••••
+af ae ad ac ab aa a9 a8  a7 a6 a5 a4 a3 a2 a1 a0  ┆ ••••••••••••••••
+9f 9e 9d 9c 9b 9a 99 98  97 96 95 94 93 92 91 90  ┆ ••••••••••••••••
+8f 8e 8d 8c 8b 8a 89 88  87 86 85 84 83 82 81 80  ┆ ••••••••••••••••
+7f 7e 7d 7c 7b 7a 79 78  77 76 75 74 73 72 71 70  ┆ •~}|{zyxwvutsrqp
+6f 6e 6d 6c 6b 6a 69 68  67 66 65 64 63 62 61 60  ┆ onmlkjihgfedcba`
+5f 5e 5d 5c 5b 5a 59 58  57 56 55 54 53 52 51 50  ┆ _^]\[ZYXWVUTSRQP
+4f 4e 4d 4c 4b 4a 49 48  47 46 45 44 43 42 41 40  ┆ ONMLKJIHGFEDCBA@
+3f 3e 3d 3c 3b 3a 39 38  37 36 35 34 33 32 31 30  ┆ ?>=<;:9876543210
+2f 2e 2d 2c 2b 2a 29 28  27 26 25 24 23 22 21 20  ┆ /.-,+*)('&%$#"!
+1f 1e 1d 1c 1b 1a 19 18  17 16 15 14 13 12 11 10  ┆ ••••••••••••••••
+0f 0e 0d 0c 0b 0a 09 08  07 06 05 04 03 02 01 00  ┆ ••••••••••••••••
+----
+====
+
+== Command-line tool
+
+If you <<install-normand,installed>> the `normand` package, then you
+can use the `normand` command-line tool:
+
+----
+$ normand <<< '"ma gang de malades"' | hexdump -C
+----
+
+----
+00000000  6d 61 20 67 61 6e 67 20  64 65 20 6d 61 6c 61 64  |ma gang de malad|
+00000010  65 73                                             |es|
+----
+
+If you copy the `normand.py` module to your own project, then you can
+run the module itself:
+
+----
+$ python3 -m normand <<< '"ma gang de malades"' | hexdump -C
+----
+
+----
+00000000  6d 61 20 67 61 6e 67 20  64 65 20 6d 61 6c 61 64  |ma gang de malad|
+00000010  65 73                                             |es|
+----
+
+Without a path argument, the `normand` tool reads from the standard
+input.
+
+The `normand` tool prints the generated binary data to the standard
+output.
+
+Various options control the initial <<state,state>> of the processor:
+use the `--help` option to learn more.
+
+== {py3} API
+
+The whole `normand` package/module API is:
+
+[source,python]
+----
+class ByteOrder(enum.Enum):
+    # Big endian.
+    BE = ...
+
+    # Little endian.
+    LE = ...
+
+
+VarsT = typing.Dict[str, int]
+
+
+class TextLoc:
+    # Line number.
+    @property
+    def line_no(self) -> int:
+        ...
+
+    # Column number.
+    @property
+    def col_no(self) -> int:
+        ...
+
+
+class ParseError(RuntimeError):
+    # Source text location.
+    @property
+    def text_loc(self) -> TextLoc:
+        ...
+
+
+class ParseResult:
+    # Generated data.
+    @property
+    def data(self) -> bytearray:
+        ...
+
+    # Updated variable values.
+    @property
+    def variables(self) -> VarsT:
+        ...
+
+    # Updated main group label values.
+    @property
+    def labels(self) -> VarsT:
+        ...
+
+    # Final offset.
+    @property
+    def offset(self) -> int:
+        ...
+
+    # Final byte order.
+    @property
+    def byte_order(self) -> typing.Optional[int]:
+        ...
+
+def parse(normand: str,
+          init_variables: typing.Optional[VarsT] = None,
+          init_labels: typing.Optional[VarsT] = None,
+          init_offset: int = 0,
+          init_byte_order: typing.Optional[ByteOrder] = None) -> ParseResult:
+    ...
+----
+
+The `normand` parameter is the actual <<learn-normand,Normand input>>
+while the other parameters control the initial <<state,state>>.
+
+The `parse()` function raises a `ParseError` instance should it fail to
+parse the `normand` string for any reason.
