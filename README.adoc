@@ -688,8 +688,7 @@ An accessible label is either:
 * Outside of the current <<group,group>>.
 * Within the same immediate group (not within a nested group).
 
-A variable name may not be `ICITTE` (see <<value>> and
-<<variable-assignment>> to learn more).
+A variable name may not be `ICITTE`.
 
 In the {py3} expression of a variable assignment, the special name
 `ICITTE` is the <<cur-offset,current offset>>.
