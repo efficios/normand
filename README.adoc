@@ -1,8 +1,22 @@
+// Show ToC at a specific location for a GitHub rendering
+ifdef::env-github[]
+:toc: macro
+endif::env-github[]
+
+ifndef::env-github[]
+:toc: left
+endif::env-github[]
+
+// This is to mimic what GitHub does so that anchors work in an offline
+// rendering too.
+:idprefix:
+:idseparator: -
+
+// Other attributes
+:py3: Python{nbsp}3
+
 = Normand
 Philippe Proulx
-:toc: left
-
-:py3: Python{nbsp}3
 
 [.normal]
 image:https://img.shields.io/pypi/v/normand.svg?label=Latest%20version[link="https://pypi.python.org/pypi/normand"]
@@ -15,6 +29,11 @@ tool.
 
 WARNING: This version of Normand is 0.1, meaning both the Normand
 language and the module/CLI interface aren't stable.
+
+ifdef::env-github[]
+// ToC location for a GitHub rendering
+toc::[]
+endif::env-github[]
 
 == Introduction
 
