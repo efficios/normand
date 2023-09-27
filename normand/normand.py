@@ -22,7 +22,7 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -863,9 +863,11 @@ class _Parser:
         )
         return int(m.group(0), 0)
 
-    # Tries to parse a repeatable item followed or not by a repetition,
-    # returning an item on success.
-    def _try_parse_item(self):
+    # Tries to parse an item, possibly followed by a repetition,
+    # returning `True` on success.
+    #
+    # Appends any parsed item to `items`.
+    def _try_append_item(self, items: List[_Item]):
         self._skip_ws_and_comments()
 
         # Parse a base item
@@ -873,20 +875,21 @@ class _Parser:
 
         if item is None:
             # No item
-            return
+            return False
 
         # Parse repetition if the base item is repeatable
         if isinstance(item, _RepableItem):
             rep = self._try_parse_rep()
 
             if rep == 0:
-                # No item
-                return
+                # No item, but that's okay
+                return True
             elif rep > 1:
                 # Convert to repetition item
                 item = _Rep(item, rep, self._text_loc)
 
-        return item
+        items.append(item)
+        return True
 
     # Parses and returns items, skipping whitespaces, insignificant
     # symbols, and comments when allowed, and stopping at the first
@@ -895,16 +898,10 @@ class _Parser:
         items = []  # type: List[_Item]
 
         while self._isnt_done():
-            # Try to parse item
-            item = self._try_parse_item()
-
-            if item is not None:
-                # Append new item
-                items.append(item)
-                continue
-
-            # Unknown at this point
-            break
+            # Try to append item
+            if not self._try_append_item(items):
+                # Unknown at this point
+                break
 
         return items
 
