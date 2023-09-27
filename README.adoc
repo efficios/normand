@@ -18,6 +18,8 @@ endif::env-github[]
 = Normand
 Philippe Proulx
 
+image::normand-logo.png[]
+
 [.normal]
 image:https://img.shields.io/pypi/v/normand.svg?label=Latest%20version[link="https://pypi.python.org/pypi/normand"]
 
