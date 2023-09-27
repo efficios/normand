@@ -22,7 +22,7 @@
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -141,7 +141,8 @@ class ByteOrder(enum.Enum):
 
 # Byte order.
 class _Bo(_Item):
-    def __init__(self, bo: ByteOrder):
+    def __init__(self, bo: ByteOrder, text_loc: TextLoc):
+        super().__init__(text_loc)
         self._bo = bo
 
     @property
@@ -441,6 +442,8 @@ class _Parser:
     # Tries to parse a hexadecimal byte, returning a byte item on
     # success.
     def _try_parse_hex_byte(self):
+        begin_text_loc = self._text_loc
+
         # Match initial nibble
         m_high = self._try_parse_pat(self._nibble_pat)
 
@@ -455,7 +458,7 @@ class _Parser:
         )
 
         # Return item
-        return _Byte(int(m_high.group(0) + m_low.group(0), 16), self._text_loc)
+        return _Byte(int(m_high.group(0) + m_low.group(0), 16), begin_text_loc)
 
     # Patterns for _try_parse_bin_byte()
     _bin_byte_bit_pat = re.compile(r"[01]")
@@ -463,6 +466,8 @@ class _Parser:
 
     # Tries to parse a binary byte, returning a byte item on success.
     def _try_parse_bin_byte(self):
+        begin_text_loc = self._text_loc
+
         # Match prefix
         if self._try_parse_pat(self._bin_byte_prefix_pat) is None:
             # No match
@@ -477,7 +482,7 @@ class _Parser:
             bits.append(m.group(0))
 
         # Return item
-        return _Byte(int("".join(bits), 2), self._text_loc)
+        return _Byte(int("".join(bits), 2), begin_text_loc)
 
     # Patterns for _try_parse_dec_byte()
     _dec_byte_prefix_pat = re.compile(r"\$\s*")
@@ -485,6 +490,8 @@ class _Parser:
 
     # Tries to parse a decimal byte, returning a byte item on success.
     def _try_parse_dec_byte(self):
+        begin_text_loc = self._text_loc
+
         # Match prefix
         if self._try_parse_pat(self._dec_byte_prefix_pat) is None:
             # No match
@@ -498,13 +505,13 @@ class _Parser:
 
         # Validate
         if val < -128 or val > 255:
-            self._raise_error("Invalid decimal byte value {}".format(val))
+            _raise_error("Invalid decimal byte value {}".format(val), begin_text_loc)
 
         # Two's complement
         val = val % 256
 
         # Return item
-        return _Byte(val, self._text_loc)
+        return _Byte(val, begin_text_loc)
 
     # Tries to parse a byte, returning a byte item on success.
     def _try_parse_byte(self):
@@ -548,6 +555,8 @@ class _Parser:
 
     # Tries to parse a string, returning a string item on success.
     def _try_parse_str(self):
+        begin_text_loc = self._text_loc
+
         # Match prefix
         m = self._try_parse_pat(self._str_prefix_pat)
 
@@ -577,7 +586,7 @@ class _Parser:
         data = val.encode(encoding)
 
         # Return item
-        return _Str(data, self._text_loc)
+        return _Str(data, begin_text_loc)
 
     # Patterns for _try_parse_group()
     _group_prefix_pat = re.compile(r"\(")
@@ -585,6 +594,8 @@ class _Parser:
 
     # Tries to parse a group, returning a group item on success.
     def _try_parse_group(self):
+        begin_text_loc = self._text_loc
+
         # Match prefix
         if self._try_parse_pat(self._group_prefix_pat) is None:
             # No match
@@ -600,7 +611,7 @@ class _Parser:
         )
 
         # Return item
-        return _Group(items, self._text_loc)
+        return _Group(items, begin_text_loc)
 
     # Returns a stripped expression string and an AST expression node
     # from the expression string `expr_str` at text location `text_loc`.
@@ -647,7 +658,7 @@ class _Parser:
             expr_str,
             expr,
             int(m_len.group(1)),
-            self._text_loc,
+            begin_text_loc,
         )
 
     # Patterns for _try_parse_val_and_len()
@@ -670,10 +681,12 @@ class _Parser:
         name = m.group("name")
 
         if name == _icitte_name:
-            self._raise_error("`{}` is a reserved variable name".format(_icitte_name))
+            _raise_error(
+                "`{}` is a reserved variable name".format(_icitte_name), begin_text_loc
+            )
 
         if name in self._label_names:
-            self._raise_error("Existing label named `{}`".format(name))
+            _raise_error("Existing label named `{}`".format(name), begin_text_loc)
 
         # Add to known variable names
         self._var_names.add(name)
@@ -686,7 +699,7 @@ class _Parser:
             name,
             expr_str,
             expr,
-            self._text_loc,
+            begin_text_loc,
         )
 
     # Pattern for _try_parse_bo_name()
@@ -695,6 +708,8 @@ class _Parser:
     # Tries to parse a byte order name, returning a byte order item on
     # success.
     def _try_parse_bo_name(self):
+        begin_text_loc = self._text_loc
+
         # Match
         m = self._try_parse_pat(self._bo_pat)
 
@@ -704,10 +719,10 @@ class _Parser:
 
         # Return corresponding item
         if m.group(0) == "be":
-            return _Bo(ByteOrder.BE)
+            return _Bo(ByteOrder.BE, begin_text_loc)
         else:
             assert m.group(0) == "le"
-            return _Bo(ByteOrder.LE)
+            return _Bo(ByteOrder.LE, begin_text_loc)
 
     # Patterns for _try_parse_val_or_bo()
     _val_var_bo_prefix_pat = re.compile(r"\{\s*")
@@ -746,6 +761,8 @@ class _Parser:
     # Tries to parse an offset value (after the initial `<`), returning
     # an offset item on success.
     def _try_parse_offset_val(self):
+        begin_text_loc = self._text_loc
+
         # Match
         m = self._try_parse_pat(self._pos_const_int_pat)
 
@@ -754,11 +771,13 @@ class _Parser:
             return
 
         # Return item
-        return _Offset(int(m.group(0), 0), self._text_loc)
+        return _Offset(int(m.group(0), 0), begin_text_loc)
 
     # Tries to parse a label name (after the initial `<`), returning a
     # label item on success.
     def _try_parse_label_name(self):
+        begin_text_loc = self._text_loc
+
         # Match
         m = self._try_parse_pat(_py_name_pat)
 
@@ -770,19 +789,21 @@ class _Parser:
         name = m.group(0)
 
         if name == _icitte_name:
-            self._raise_error("`{}` is a reserved label name".format(_icitte_name))
+            _raise_error(
+                "`{}` is a reserved label name".format(_icitte_name), begin_text_loc
+            )
 
         if name in self._label_names:
-            self._raise_error("Duplicate label name `{}`".format(name))
+            _raise_error("Duplicate label name `{}`".format(name), begin_text_loc)
 
         if name in self._var_names:
-            self._raise_error("Existing variable named `{}`".format(name))
+            _raise_error("Existing variable named `{}`".format(name), begin_text_loc)
 
         # Add to known label names
         self._label_names.add(name)
 
         # Return item
-        return _Label(name, self._text_loc)
+        return _Label(name, begin_text_loc)
 
     # Patterns for _try_parse_label_or_offset()
     _label_offset_prefix_pat = re.compile(r"<\s*")
@@ -849,8 +870,6 @@ class _Parser:
     # Tries to parse a repetition, returning the multiplier on success,
     # or 1 otherwise.
     def _try_parse_rep(self):
-        self._skip_ws_and_comments()
-
         # Match prefix
         if self._try_parse_pat(self._rep_prefix_pat) is None:
             # No match
@@ -879,6 +898,8 @@ class _Parser:
 
         # Parse repetition if the base item is repeatable
         if isinstance(item, _RepableItem):
+            self._skip_ws_and_comments()
+            rep_text_loc = self._text_loc
             rep = self._try_parse_rep()
 
             if rep == 0:
@@ -886,7 +907,7 @@ class _Parser:
                 return True
             elif rep > 1:
                 # Convert to repetition item
-                item = _Rep(item, rep, self._text_loc)
+                item = _Rep(item, rep, rep_text_loc)
 
         items.append(item)
         return True
