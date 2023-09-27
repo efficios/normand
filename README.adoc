@@ -1022,3 +1022,66 @@ while the other parameters control the initial <<state,state>>.
 
 The `parse()` function raises a `ParseError` instance should it fail to
 parse the `normand` string for any reason.
+
+== Development
+
+Normand is a https://python-poetry.org/[Poetry] project.
+
+To develop it, install it through Poetry and enter the virtual
+environment:
+
+----
+$ poetry install
+$ poetry shell
+$ normand <<< '"lol" * 10 0a'
+----
+
+`normand.py` is processed by:
+
+* https://microsoft.github.io/pyright/[Pyright]
+* https://github.com/psf/black[Black]
+* https://pycqa.github.io/isort/[isort]
+
+=== Testing
+
+Use https://docs.pytest.org/[pytest] to test Normand once the package is
+part of your virtual environment, for example:
+
+----
+$ poetry install
+$ poetry run pip3 install pytest
+$ poetry run pytest
+----
+
+The `pytest` project is currently not a development dependency in
+`pyproject.toml` due to backward compatibiliy issues with
+Python{nbsp}3.4.
+
+In the `tests` directory, each `*.nt` file is a test. The file name
+prefix indicates what it's meant to test:
+
+`pass-`::
+    Everything above the `---` line is the valid Normand input
+    to test.
++
+Everything below the `---` line is the expected data
+(whitespace-separated hexadecimal bytes).
+
+`fail-`::
+    Everything above the `---` line is the invalid Normand input
+    to test.
++
+Everything below the `---` line is the expected error message having
+this form:
++
+----
+LINE:COL - MESSAGE
+----
+
+=== Contributing
+
+Normand uses https://review.lttng.org/admin/repos/normand,general[Gerrit]
+for code review.
+
+To report a bug, https://github.com/efficios/normand/issues/new[create a
+GitHub issue].

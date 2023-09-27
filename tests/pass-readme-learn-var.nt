@@ -1,0 +1,5 @@
+{mix = 101} {le}
+{meow = 42} 11 22 {meow:8} 33 {meow = ICITTE + 17}
+"yooo" {meow + mix : 16}
+---
+11 22 2a 33 79 6f 6f 6f 7a 00

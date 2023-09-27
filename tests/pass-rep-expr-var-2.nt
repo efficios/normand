@@ -1,0 +1,18 @@
+aa <mix> bb
+{meow = 3}
+{meow = end}
+11 22
+(
+  {meow = mix * 2}
+  cc dd * {meow}
+) * 2
+ee ff
+88 * {meow}
+<end>
+---
+aa bb
+11 22
+cc dd dd
+cc dd dd
+ee ff
+88 88

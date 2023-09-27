@@ -1,0 +1,5 @@
+<meow>
+aa bb cc
+{ meow = 23 }
+---
+3:3 - Existing label named `meow`

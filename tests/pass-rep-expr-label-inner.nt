@@ -1,0 +1,20 @@
+11
+(
+  aa bb
+  <meow>
+  cc dd * {meow}
+  ee ff
+) * 2
+22
+---
+11
+
+aa bb
+cc dd dd dd
+ee ff
+
+aa bb
+cc dd dd dd dd dd dd dd dd dd dd dd
+ee ff
+
+22

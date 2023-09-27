@@ -1,0 +1,5 @@
+aa bb
+{be}
+{ -(2**31) - 1 : 32 }
+---
+3:3 - Value -2,147,483,649 is outside the 32-bit range when evaluating expression `-(2**31) - 1` at byte offset 2

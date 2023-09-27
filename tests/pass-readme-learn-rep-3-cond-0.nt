@@ -1,0 +1,6 @@
+{cond = 0}
+aa bb cc dd
+(ee ff "meow mix" 00) * {cond}
+{be} {-1993:16}
+---
+aa bb cc dd f8 37

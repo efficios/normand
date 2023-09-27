@@ -1,0 +1,3 @@
+{ meow = 'salut' }
+---
+1:3 - Invalid expression `'salut'`: expecting result type `int`, not `str`

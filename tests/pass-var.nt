@@ -1,0 +1,15 @@
+{var = 0x18}
+aa bb
+{var:8}
+cc dd
+<meow>
+{var = var - ICITTE}
+{mix = meow + 23}
+{var:8}
+{mix:8}
+---
+aa bb
+18
+cc dd
+13
+1c

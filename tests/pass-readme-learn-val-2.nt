@@ -1,0 +1,11 @@
+{be}
+
+# String length in bits
+{8 * (str_end - str_beg) : 16}
+
+# String
+<str_beg>
+  "hello world!"
+<str_end>
+---
+00 60 68 65 6c 6c 6f 20 77 6f 72 6c 64 21

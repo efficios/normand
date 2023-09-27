@@ -1,0 +1,3 @@
+aa <meow> ff * {-meow}
+---
+1:14 - Invalid expression `-meow`: unexpected negative result -1

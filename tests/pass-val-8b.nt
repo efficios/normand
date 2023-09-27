@@ -1,0 +1,24 @@
+{var = 5}
+aa bb cc dd ee ff
+<lbl>
+33 44 55
+
+{66:8}
+{-66:8}
+{66 + var : 8}
+{66 + lbl : 8}
+{66 + var + lbl : 8}
+
+<end>
+33
+---
+aa bb cc dd ee ff
+33 44 55
+
+42
+be
+47
+48
+4d
+
+33

@@ -1,0 +1,27 @@
+{le}
+{var = 5}
+aa bb cc dd ee ff
+<lbl>
+33 44 55
+
+{35184372059993:48}
+{-35184372059993:48}
+{35184372059993 + var : 48}
+{35184372059993 + lbl : 48}
+{35184372059993 + var + lbl : 48}
+{-1:48}
+
+<end>
+33
+---
+aa bb cc dd ee ff
+33 44 55
+
+59 8f ff ff ff 1f
+a7 70 00 00 00 e0
+5e 8f ff ff ff 1f
+5f 8f ff ff ff 1f
+64 8f ff ff ff 1f
+ff ff ff ff ff ff
+
+33

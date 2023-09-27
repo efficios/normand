@@ -1,0 +1,5 @@
+{meow = 23}
+aa bb
+<meow>
+---
+3:2 - Existing variable named `meow`

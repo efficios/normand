@@ -1,0 +1,5 @@
+aa bb cc {meow = ICITTE + 3} dd ee ff
+{meow : 8}
+---
+aa bb cc dd ee ff
+06

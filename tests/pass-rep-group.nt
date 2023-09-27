@@ -1,0 +1,44 @@
+aa (bb cc (dd ee) * 3) * 0xa ff
+---
+aa
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+ff

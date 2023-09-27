@@ -1,0 +1,12 @@
+aa bb cc dd ee ff
+{ICITTE + 23 : 8}
+{be}
+{ICITTE + 23 : 16}
+{ICITTE + 23 : 32}
+{ICITTE + 23 : 64}
+---
+aa bb cc dd ee ff
+1d
+00 1e
+00 00 00 20
+00 00 00 00 00 00 00 24

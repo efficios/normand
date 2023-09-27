@@ -1,0 +1,22 @@
+{times = 1}
+aa bb cc dd
+(
+  <here>
+  (ee ff) * {here + 1}
+  11 22 33 * {times}
+  {times = times + 1}
+) * 3
+"coucou!"
+---
+aa bb cc dd ee ff ee ff ee ff ee ff ee ff 11 22
+33 ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff 11 22 33 33 ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff 11 22 33
+33 33 63 6f 75 63 6f 75 21

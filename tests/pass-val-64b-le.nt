@@ -1,0 +1,27 @@
+{le}
+{var = 5}
+aa bb cc dd ee ff
+<lbl>
+33 44 55
+
+{4611686018427387158:64}
+{-4611686018427387158:64}
+{4611686018427387158 + var : 64}
+{4611686018427387158 + lbl : 64}
+{4611686018427387158 + var + lbl : 64}
+{-1:64}
+
+<end>
+33
+---
+aa bb cc dd ee ff
+33 44 55
+
+16 fd ff ff ff ff ff 3f
+ea 02 00 00 00 00 00 c0
+1b fd ff ff ff ff ff 3f
+1c fd ff ff ff ff ff 3f
+21 fd ff ff ff ff ff 3f
+ff ff ff ff ff ff ff ff
+
+33

@@ -1,0 +1,4 @@
+{ meow : 8 }
+{ meow = 34 }
+---
+1:3 - Illegal (unknown or unreachable) variable/label name `meow` in expression `meow`; the legal names are {`ICITTE`}

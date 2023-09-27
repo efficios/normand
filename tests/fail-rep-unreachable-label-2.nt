@@ -1,0 +1,6 @@
+<meow>
+aa {kilo = 99} bb {kilo = mix} cc
+dd * {kilo}
+ee <mix>
+---
+3:4 - Illegal (unknown or unreachable) variable/label name `kilo` in expression `kilo`; the legal names are {`meow`}

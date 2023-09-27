@@ -1,0 +1,7 @@
+<meow>
+aa bb cc
+<mix>
+dd ee ff
+<meow>
+---
+5:2 - Duplicate label name `meow`

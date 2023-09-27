@@ -1,0 +1,12 @@
+00 11 # comment # 22 #other comment# 33 44
+# comment "yes comment"
+55 66 77 # comment until EOL
+"yeah #not a comment" # comment 77
+88
+9# a comment #9
+---
+00 11 22 33 44
+55 66 77
+79 65 61 68 20 23 6e 6f 74 20 61 20 63 6f 6d 6d 65 6e 74
+88
+99

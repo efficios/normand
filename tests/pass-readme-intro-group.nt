@@ -1,0 +1,9 @@
+ff ((aa bb "zoom" cc) * 5) * 3 $-34 * 4
+---
+ff aa bb 7a 6f 6f 6d cc aa bb 7a 6f 6f 6d cc aa
+bb 7a 6f 6f 6d cc aa bb 7a 6f 6f 6d cc aa bb 7a
+6f 6f 6d cc aa bb 7a 6f 6f 6d cc aa bb 7a 6f 6f
+6d cc aa bb 7a 6f 6f 6d cc aa bb 7a 6f 6f 6d cc
+aa bb 7a 6f 6f 6d cc aa bb 7a 6f 6f 6d cc aa bb
+7a 6f 6f 6d cc aa bb 7a 6f 6f 6d cc aa bb 7a 6f
+6f 6d cc aa bb 7a 6f 6f 6d cc de de de de
