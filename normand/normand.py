@@ -21,6 +21,14 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+# This module is the portable Normand processor. It offers both the
+# parse() function and the command-line tool (run the module itself)
+# without external dependencies except a `typing` module for Python 3.4.
+#
+# Feel free to copy this module file to your own project to use Normand.
+#
+# Upstream repository: <https://github.com/efficios/normand>.
+
 __author__ = "Philippe Proulx"
 __version__ = "0.2.0"
 __all__ = [
