@@ -1,0 +1,4 @@
+{be}
+{ 18.49 : 16 }
+---
+2:3 - Invalid 16-bit length for a fixed-length floating point number (value 18.49)

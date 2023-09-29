@@ -1,0 +1,3 @@
+{ 45.2 : uleb128 }
+---
+1:3 - Invalid expression `45.2`: expecting result type `int`, not `float`

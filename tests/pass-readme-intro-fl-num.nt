@@ -1,0 +1,7 @@
+{strength = 4}
+{be} 67 <lbl> 44 $178 {(end - lbl) * 8 + strength : 16} $99 <end>
+{le} {-1993 : 32}
+{-3.141593 : 64}
+---
+67 44 b2 00 2c 63 37 f8 ff ff 7f bd c2 82 fb 21
+09 c0

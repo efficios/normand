@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -246,8 +246,8 @@ class _VarAssign(_Item, _ExprMixin):
         )
 
 
-# Fixed-length integer, possibly needing more than one byte.
-class _FlInt(_ScalarItem, _RepableItem, _ExprMixin):
+# Fixed-length number, possibly needing more than one byte.
+class _FlNum(_ScalarItem, _RepableItem, _ExprMixin):
     def __init__(
         self, expr_str: str, expr: ast.Expression, len: int, text_loc: TextLoc
     ):
@@ -265,7 +265,7 @@ class _FlInt(_ScalarItem, _RepableItem, _ExprMixin):
         return self._len // 8
 
     def __repr__(self):
-        return "_FlInt({}, {}, {}, {})".format(
+        return "_FlNum({}, {}, {}, {})".format(
             repr(self._expr_str), repr(self._expr), repr(self._len), self._text_loc
         )
 
@@ -331,7 +331,7 @@ class _Rep(_Item, _ExprMixin):
 
 
 # Expression item type.
-_ExprItemT = Union[_FlInt, _Leb128Int, _VarAssign, _Rep]
+_ExprItemT = Union[_FlNum, _Leb128Int, _VarAssign, _Rep]
 
 
 # A parsing error containing a message and a text location.
@@ -655,14 +655,14 @@ class _Parser:
 
         return expr_str, expr
 
-    # Patterns for _try_parse_val_and_attr()
+    # Patterns for _try_parse_num_and_attr()
     _val_expr_pat = re.compile(r"([^}:]+):\s*")
-    _fl_int_len_attr_pat = re.compile(r"8|16|24|32|40|48|56|64")
+    _fl_num_len_attr_pat = re.compile(r"8|16|24|32|40|48|56|64")
     _leb128_int_attr_pat = re.compile(r"(u|s)leb128")
 
     # Tries to parse a value and attribute (fixed length in bits or
     # `leb128`), returning a value item on success.
-    def _try_parse_val_and_attr(self):
+    def _try_parse_num_and_attr(self):
         begin_text_loc = self._text_loc
 
         # Match
@@ -676,7 +676,7 @@ class _Parser:
         expr_str, expr = self._ast_expr_from_str(m_expr.group(1), begin_text_loc)
 
         # Length?
-        m_attr = self._try_parse_pat(self._fl_int_len_attr_pat)
+        m_attr = self._try_parse_pat(self._fl_num_len_attr_pat)
 
         if m_attr is None:
             # LEB128?
@@ -692,15 +692,15 @@ class _Parser:
             cls = _ULeb128Int if m_attr.group(1) == "u" else _SLeb128Int
             return cls(expr_str, expr, begin_text_loc)
         else:
-            # Return fixed-length integer item
-            return _FlInt(
+            # Return fixed-length number item
+            return _FlNum(
                 expr_str,
                 expr,
                 int(m_attr.group(0)),
                 begin_text_loc,
             )
 
-    # Patterns for _try_parse_val_and_attr()
+    # Patterns for _try_parse_num_and_attr()
     _var_assign_pat = re.compile(
         r"(?P<name>{})\s*=\s*(?P<expr>[^}}]+)".format(_py_name_pat.pattern)
     )
@@ -780,8 +780,8 @@ class _Parser:
         item = self._try_parse_var_assign()
 
         if item is None:
-            # Fixed-length value item?
-            item = self._try_parse_val_and_attr()
+            # Number item?
+            item = self._try_parse_num_and_attr()
 
             if item is None:
                 # Byte order setting item?
@@ -790,7 +790,7 @@ class _Parser:
                 if item is None:
                     # At this point it's invalid
                     self._raise_error(
-                        "Expecting a fixed-length integer, a variable assignment, or a byte order setting"
+                        "Expecting a fixed-length number, a variable assignment, or a byte order setting"
                     )
 
         # Expect suffix
@@ -1327,8 +1327,16 @@ class _Gen:
     #
     # If `allow_icitte` is `True`, then the `ICITTE` name is available
     # for the expression to evaluate.
+    #
+    # If `allow_float` is `True`, then the type of the result may be
+    # `float` too.
     @staticmethod
-    def _eval_item_expr(item: _ExprItemT, state: _GenState, allow_icitte: bool):
+    def _eval_item_expr(
+        item: _ExprItemT,
+        state: _GenState,
+        allow_icitte: bool,
+        allow_float: bool = False,
+    ):
         syms = state.labels.copy()
 
         # Set the `ICITTE` name to the current offset, if any
@@ -1350,11 +1358,18 @@ class _Gen:
                 item,
             )
 
-        # Validate result
-        if type(val) is not int:
+        # Validate result type
+        expected_types = {int}  # type: Set[type]
+        type_msg = "`int`"
+
+        if allow_float:
+            expected_types.add(float)
+            type_msg += " or `float`"
+
+        if type(val) not in expected_types:
             _raise_error_for_item(
-                "Invalid expression `{}`: expecting result type `int`, not `{}`".format(
-                    item.expr_str, type(val).__name__
+                "Invalid expression `{}`: expecting result type {}, not `{}`".format(
+                    item.expr_str, type_msg, type(val).__name__
                 ),
                 item,
             )
@@ -1420,7 +1435,9 @@ class _Gen:
 
             if do_eval:
                 # Evaluate the expression and keep the result
-                state.variables[item.name] = _Gen._eval_item_expr(item, state, True)
+                state.variables[item.name] = _Gen._eval_item_expr(
+                    item, state, True, True
+                )
         elif type(item) is _SetOffset:
             state.offset = item.val
         elif isinstance(item, _Leb128Int):
@@ -1545,12 +1562,7 @@ class _Gen:
         return next_vl_instance
 
     # Handles the fixed-length integer item `item`.
-    def _handle_fl_int_item(
-        self, item: _FlInt, state: _GenState, next_vl_instance: int
-    ):
-        # Compute value
-        val = self._eval_item_expr(item, state, True)
-
+    def _handle_fl_int_item(self, val: int, item: _FlNum, state: _GenState):
         # Validate range
         if val < -(2 ** (item.len - 1)) or val > 2**item.len - 1:
             _raise_error_for_item(
@@ -1562,14 +1574,6 @@ class _Gen:
 
         # Encode result on 64 bits (to extend the sign bit whatever the
         # value of `item.len`).
-        if state.bo is None and item.len > 8:
-            _raise_error_for_item(
-                "Current byte order isn't defined at first value (`{}`) to encode on more than 8 bits".format(
-                    item.expr_str
-                ),
-                item,
-            )
-
         data = struct.pack(
             "{}{}".format(
                 ">" if state.bo in (None, ByteOrder.BE) else "<",
@@ -1591,7 +1595,53 @@ class _Gen:
 
         # Append to current bytes and update offset
         self._data += data
-        state.offset += len(data)
+
+    # Handles the fixed-length integer item `item`.
+    def _handle_fl_float_item(self, val: float, item: _FlNum, state: _GenState):
+        # Validate length
+        if item.len not in (32, 64):
+            _raise_error_for_item(
+                "Invalid {}-bit length for a fixed-length floating point number (value {:,})".format(
+                    item.len, val
+                ),
+                item,
+            )
+
+        # Encode result
+        self._data += struct.pack(
+            "{}{}".format(
+                ">" if state.bo in (None, ByteOrder.BE) else "<",
+                "f" if item.len == 32 else "d",
+            ),
+            val,
+        )
+
+    # Handles the fixed-length number item `item`.
+    def _handle_fl_num_item(
+        self, item: _FlNum, state: _GenState, next_vl_instance: int
+    ):
+        # Compute value
+        val = self._eval_item_expr(item, state, True, True)
+
+        # Validate current byte order
+        if state.bo is None and item.len > 8:
+            _raise_error_for_item(
+                "Current byte order isn't defined at first fixed-length number (`{}`) to encode on more than 8 bits".format(
+                    item.expr_str
+                ),
+                item,
+            )
+
+        # Handle depending on type
+        if type(val) is int:
+            self._handle_fl_int_item(val, item, state)
+        else:
+            assert type(val) is float
+            self._handle_fl_float_item(val, item, state)
+
+        # Update offset
+        state.offset += item.size
+
         return next_vl_instance
 
     # Handles the LEB128 integer item `item`.
@@ -1695,7 +1745,7 @@ class _Gen:
         # Item handlers
         self._item_handlers = {
             _Byte: self._handle_byte_item,
-            _FlInt: self._handle_fl_int_item,
+            _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,
             _Rep: self._handle_rep_item,
@@ -1710,7 +1760,7 @@ class _Gen:
         # Item size getters
         self._item_size_funcs = {
             _Byte: self._scalar_item_size,
-            _FlInt: self._scalar_item_size,
+            _FlNum: self._scalar_item_size,
             _Group: self._group_item_size,
             _Label: self._zero_item_size,
             _Rep: self._rep_item_size,

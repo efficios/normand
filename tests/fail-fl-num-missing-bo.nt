@@ -1,0 +1,3 @@
+{ 34 : 16 }
+---
+1:3 - Current byte order isn't defined at first fixed-length number (`34`) to encode on more than 8 bits
