@@ -253,7 +253,7 @@ to learn more about a user site installation.
 [NOTE]
 ====
 Normand has a single module file, `normand.py`, which you can copy as is
-to your project to use it (both the <<python-3-api,`normand.parse()`>>
+to your project to use it (both the <<python3-api,`normand.parse()`>>
 function and the <<command-line-tool,command-line tool>>).
 
 `normand.py` has _no external dependencies_, but if you're using
@@ -271,7 +271,7 @@ current state:
 
 [%header%autowidth]
 |===
-|State variable |Description |Initial value: <<python-3-api,{py3} API>> |Initial value: <<command-line-tool,CLI>>
+|State variable |Description |Initial value: <<python3-api,{py3} API>> |Initial value: <<command-line-tool,CLI>>
 
 |[[cur-offset]] Current offset
 |
