@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -361,7 +361,7 @@ def _raise_error(msg: str, text_loc: TextLoc) -> NoReturn:
 
 
 # Variable/label dictionary type.
-SymbolsT = Dict[str, int]
+SymbolsT = Dict[str, Union[int, float]]
 
 
 # Python name pattern.
@@ -1879,7 +1879,7 @@ def _raise_cli_error(msg: str) -> NoReturn:
 # Returns a dictionary of string to integers from the list of strings
 # `args` containing `NAME=VAL` entries.
 def _dict_from_arg(args: Optional[List[str]]):
-    d = {}  # type: Dict[str, int]
+    d = {}  # type: SymbolsT
 
     if args is None:
         return d
