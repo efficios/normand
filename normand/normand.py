@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -1414,6 +1414,8 @@ def _dict_from_arg(args: Optional[List[str]]):
 
         if m is None:
             _raise_cli_error("Invalid assignment {}".format(arg))
+
+        d[m.group(1)] = int(m.group(2))
 
     return d
 
