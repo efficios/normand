@@ -1,0 +1,7 @@
+aa bb cc dd
+<meow>
+ee ff
+{-981238311 + (meow * -23) : sleb128}
+"hello"
+---
+aa bb cc dd ee ff fd fa 8d ac 7c 68 65 6c 6c 6f

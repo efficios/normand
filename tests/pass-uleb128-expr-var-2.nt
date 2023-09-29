@@ -1,0 +1,16 @@
+aa <mix> bb
+{meow = 3}
+{meow = end}
+11 22
+(
+  {meow = mix * 2}
+  cc {meow << 7 : uleb128}
+) * 2
+ee ff
+<end>
+---
+aa bb
+11 22
+cc 80 02
+cc 80 02
+ee ff

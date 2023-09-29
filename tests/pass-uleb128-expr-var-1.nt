@@ -1,0 +1,8 @@
+aa bb
+{meow = 1111}
+cc {meow : uleb128}
+ee ff
+---
+aa bb
+cc d7 08
+ee ff

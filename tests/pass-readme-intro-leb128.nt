@@ -1,0 +1,4 @@
+aa bb cc {-1993 : sleb128} <meow> dd ee ff
+{meow * 199 : uleb128}
+---
+aa bb cc b7 70 dd ee ff e3 07

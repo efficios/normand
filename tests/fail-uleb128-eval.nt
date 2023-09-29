@@ -1,0 +1,3 @@
+{ 23 + zoom(14) : uleb128 }
+---
+1:3 - Failed to evaluate expression `23 + zoom(14)`: name 'zoom' is not defined

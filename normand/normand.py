@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -47,6 +47,7 @@ import abc
 import ast
 import sys
 import enum
+import math
 import struct
 from typing import (
     Any,
@@ -245,8 +246,8 @@ class _VarAssign(_Item, _ExprMixin):
         )
 
 
-# Value, possibly needing more than one byte.
-class _Val(_ScalarItem, _RepableItem, _ExprMixin):
+# Fixed-length integer, possibly needing more than one byte.
+class _FlInt(_ScalarItem, _RepableItem, _ExprMixin):
     def __init__(
         self, expr_str: str, expr: ast.Expression, len: int, text_loc: TextLoc
     ):
@@ -264,9 +265,34 @@ class _Val(_ScalarItem, _RepableItem, _ExprMixin):
         return self._len // 8
 
     def __repr__(self):
-        return "_Val({}, {}, {}, {})".format(
+        return "_FlInt({}, {}, {}, {})".format(
             repr(self._expr_str), repr(self._expr), repr(self._len), self._text_loc
         )
+
+
+# LEB128 integer.
+class _Leb128Int(_Item, _RepableItem, _ExprMixin):
+    def __init__(self, expr_str: str, expr: ast.Expression, text_loc: TextLoc):
+        super().__init__(text_loc)
+        _ExprMixin.__init__(self, expr_str, expr)
+
+    def __repr__(self):
+        return "{}({}, {}, {})".format(
+            self.__class__.__name__,
+            repr(self._expr_str),
+            repr(self._expr),
+            self._text_loc,
+        )
+
+
+# Unsigned LEB128 integer.
+class _ULeb128Int(_Leb128Int, _RepableItem, _ExprMixin):
+    pass
+
+
+# Signed LEB128 integer.
+class _SLeb128Int(_Leb128Int, _RepableItem, _ExprMixin):
+    pass
 
 
 # Group of items.
@@ -305,7 +331,7 @@ class _Rep(_Item, _ExprMixin):
 
 
 # Expression item type.
-_ExprItemT = Union[_Val, _VarAssign, _Rep]
+_ExprItemT = Union[_FlInt, _Leb128Int, _VarAssign, _Rep]
 
 
 # A parsing error containing a message and a text location.
@@ -508,7 +534,7 @@ class _Parser:
             _raise_error("Invalid decimal byte value {}".format(val), begin_text_loc)
 
         # Two's complement
-        val = val % 256
+        val %= 256
 
         # Return item
         return _Byte(val, begin_text_loc)
@@ -629,13 +655,14 @@ class _Parser:
 
         return expr_str, expr
 
-    # Patterns for _try_parse_val_and_len()
-    _val_expr_pat = re.compile(r"([^}:]+):")
-    _val_len_pat = re.compile(r"\s*(8|16|24|32|40|48|56|64)")
+    # Patterns for _try_parse_val_and_attr()
+    _val_expr_pat = re.compile(r"([^}:]+):\s*")
+    _fl_int_len_attr_pat = re.compile(r"8|16|24|32|40|48|56|64")
+    _leb128_int_attr_pat = re.compile(r"(u|s)leb128")
 
-    # Tries to parse a value and length, returning a value item on
-    # success.
-    def _try_parse_val_and_len(self):
+    # Tries to parse a value and attribute (fixed length in bits or
+    # `leb128`), returning a value item on success.
+    def _try_parse_val_and_attr(self):
         begin_text_loc = self._text_loc
 
         # Match
@@ -645,23 +672,35 @@ class _Parser:
             # No match
             return
 
-        # Expect a length
-        m_len = self._expect_pat(
-            self._val_len_pat, "Expecting a length (multiple of eight bits)"
-        )
-
         # Create an expression node from the expression string
         expr_str, expr = self._ast_expr_from_str(m_expr.group(1), begin_text_loc)
 
-        # Return item
-        return _Val(
-            expr_str,
-            expr,
-            int(m_len.group(1)),
-            begin_text_loc,
-        )
+        # Length?
+        m_attr = self._try_parse_pat(self._fl_int_len_attr_pat)
 
-    # Patterns for _try_parse_val_and_len()
+        if m_attr is None:
+            # LEB128?
+            m_attr = self._try_parse_pat(self._leb128_int_attr_pat)
+
+            if m_attr is None:
+                # At this point it's invalid
+                self._raise_error(
+                    "Expecting a length (multiple of eight bits), `uleb128`, or `sleb128`"
+                )
+
+            # Return LEB128 integer item
+            cls = _ULeb128Int if m_attr.group(1) == "u" else _SLeb128Int
+            return cls(expr_str, expr, begin_text_loc)
+        else:
+            # Return fixed-length integer item
+            return _FlInt(
+                expr_str,
+                expr,
+                int(m_attr.group(0)),
+                begin_text_loc,
+            )
+
+    # Patterns for _try_parse_val_and_attr()
     _var_assign_pat = re.compile(
         r"(?P<name>{})\s*=\s*(?P<expr>[^}}]+)".format(_py_name_pat.pattern)
     )
@@ -741,8 +780,8 @@ class _Parser:
         item = self._try_parse_var_assign()
 
         if item is None:
-            # Value item?
-            item = self._try_parse_val_and_len()
+            # Fixed-length value item?
+            item = self._try_parse_val_and_attr()
 
             if item is None:
                 # Byte order setting item?
@@ -751,7 +790,7 @@ class _Parser:
                 if item is None:
                     # At this point it's invalid
                     self._raise_error(
-                        "Expecting a value, a variable assignment, or a byte order setting"
+                        "Expecting a fixed-length integer, a variable assignment, or a byte order setting"
                     )
 
         # Expect suffix
@@ -1086,12 +1125,12 @@ class _ExprValidator(_NodeVisitor):
                 name, self._item.expr_str
             )
 
-            if len(self._allowed_names) > 0:
-                allowed_names = self._allowed_names.copy()
+            allowed_names = self._allowed_names.copy()
 
-                if self._icitte_allowed:
-                    allowed_names.add(_icitte_name)
+            if self._icitte_allowed:
+                allowed_names.add(_icitte_name)
 
+            if len(allowed_names) > 0:
                 allowed_names_str = ", ".join(
                     sorted(["`{}`".format(name) for name in allowed_names])
                 )
@@ -1136,17 +1175,18 @@ class _GenState:
 #
 # The steps of generation are:
 #
-# 1. Validate that each repetition expression uses only reachable names
-#    and not `ICITTE`.
+# 1. Validate that each repetition and LEB128 integer expression uses
+#    only reachable names and not `ICITTE`.
 #
-# 2. Compute and keep the effective repetition count for each repetition
-#    instance.
+# 2. Compute and keep the effective repetition count and LEB128 integer
+#    value for each repetition and LEB128 integer instance.
 #
 # 3. Generate bytes, updating the initial state as it goes which becomes
 #    the final state after the operation.
 #
-#    During the generation, when handling a `_Rep` item, we already have
-#    the effective repetition count of the instance.
+#    During the generation, when handling a `_Rep` or `_Leb128Int` item,
+#    we already have the effective repetition count or value of the
+#    instance.
 #
 #    When handling a `_Group` item, first update the current labels with
 #    all the immediate (not nested) labels, and then handle each
@@ -1162,8 +1202,8 @@ class _Gen:
         offset: int,
         bo: Optional[ByteOrder],
     ):
-        self._validate_rep_exprs(group, set(variables.keys()), set(labels.keys()))
-        self._rep_instance_vals = self._compute_rep_instance_vals(
+        self._validate_vl_exprs(group, set(variables.keys()), set(labels.keys()))
+        self._vl_instance_vals = self._compute_vl_instance_vals(
             group, _GenState(variables, labels, offset, bo)
         )
         self._gen(group, _GenState(variables, labels, offset, bo))
@@ -1201,8 +1241,9 @@ class _Gen:
         visitor.visit(expr)
         return visitor.names
 
-    # Validates that all the repetition expressions within `group` don't
-    # refer, directly or indirectly, to subsequent labels.
+    # Validates that all the repetition and LEB128 integer expressions
+    # within `group` don't refer, directly or indirectly, to subsequent
+    # labels.
     #
     # The strategy here is to keep a set of allowed label names, per
     # group, initialized to `allowed_label_names`, and a set of allowed
@@ -1223,7 +1264,7 @@ class _Gen:
     #     it's in there): a variable which refers to an unreachable name
     #     is unreachable itself.
     #
-    # `_Rep`:
+    # `_Rep` and `_Leb128`:
     #     Make sure all the names within its expression are allowed.
     #
     # `_Group`:
@@ -1231,7 +1272,7 @@ class _Gen:
     #     the current allowed label names and the same current allowed
     #     variable names.
     @staticmethod
-    def _validate_rep_exprs(
+    def _validate_vl_exprs(
         item: _Item, allowed_variable_names: Set[str], allowed_label_names: Set[str]
     ):
         if type(item) is _Label:
@@ -1252,14 +1293,19 @@ class _Gen:
                 allowed_variable_names.add(item.name)
             elif item.name in allowed_variable_names:
                 allowed_variable_names.remove(item.name)
+        elif isinstance(item, _Leb128Int):
+            # Validate the expression (`ICITTE` allowed)
+            _ExprValidator(
+                item, allowed_label_names | allowed_variable_names, True
+            ).visit(item.expr)
         elif type(item) is _Rep:
-            # Validate the expression first
+            # Validate the expression first (`ICITTE` not allowed)
             _ExprValidator(
                 item, allowed_label_names | allowed_variable_names, False
             ).visit(item.expr)
 
             # Validate inner item
-            _Gen._validate_rep_exprs(
+            _Gen._validate_vl_exprs(
                 item.item, allowed_variable_names, allowed_label_names
             )
         elif type(item) is _Group:
@@ -1268,7 +1314,7 @@ class _Gen:
             group_allowed_label_names = allowed_label_names.copy()
 
             for subitem in item.items:
-                _Gen._validate_rep_exprs(
+                _Gen._validate_vl_exprs(
                     subitem, allowed_variable_names, group_allowed_label_names
                 )
 
@@ -1311,20 +1357,40 @@ class _Gen:
 
         return val
 
-    # Computes the effective value (multiplier) for each repetition
-    # instance, filling `instance_vals` (if not `None`) and returning
-    # `instance_vals`.
+    # Returns the size, in bytes, required to encode the value `val`
+    # with LEB128 (signed version if `is_signed` is `True`).
+    @staticmethod
+    def _leb128_size_for_val(val: int, is_signed: bool):
+        if val < 0:
+            # Equivalent upper bound.
+            #
+            # For example, if `val` is -128, then the full integer for
+            # this number of bits would be [-128, 127].
+            val = -val - 1
+
+        # Number of bits (add one for the sign if needed)
+        bits = val.bit_length() + int(is_signed)
+
+        if bits == 0:
+            bits = 1
+
+        # Seven bits per byte
+        return math.ceil(bits / 7)
+
+    # Computes the effective value for each repetition and LEB128
+    # integer instance, filling `instance_vals` (if not `None`) and
+    # returning `instance_vals`.
     #
-    # At this point it must be known that, for a given repetition, its
-    # expression only contains reachable names.
+    # At this point it must be known that, for a given variable-length
+    # item, its expression only contains reachable names.
     #
     # When handling a `_Rep` item, this function appends its effective
     # multiplier to `instance_vals` _before_ handling its repeated item.
     #
-    # When handling a `_VarAssign` item, this function only evaluates it if
-    # all its names are reachable.
+    # When handling a `_VarAssign` item, this function only evaluates it
+    # if all its names are reachable.
     @staticmethod
-    def _compute_rep_instance_vals(
+    def _compute_vl_instance_vals(
         item: _Item, state: _GenState, instance_vals: Optional[List[int]] = None
     ):
         if instance_vals is None:
@@ -1353,6 +1419,25 @@ class _Gen:
                 state.variables[item.name] = _Gen._eval_item_expr(item, state, True)
         elif type(item) is _SetOffset:
             state.offset = item.val
+        elif isinstance(item, _Leb128Int):
+            # Evaluate the expression
+            val = _Gen._eval_item_expr(item, state, True)
+
+            # Validate result
+            if type(item) is _ULeb128Int and val < 0:
+                _raise_error_for_item(
+                    "Invalid expression `{}`: unexpected negative result {:,} for a ULEB128 encoding".format(
+                        item.expr_str, val
+                    ),
+                    item,
+                )
+
+            # Add the evaluation result to the to variable-length item
+            # instance values.
+            instance_vals.append(val)
+
+            # Update offset
+            state.offset += _Gen._leb128_size_for_val(val, type(item) is _SLeb128Int)
         elif type(item) is _Rep:
             # Evaluate the expression and keep the result
             val = _Gen._eval_item_expr(item, state, False)
@@ -1371,83 +1456,94 @@ class _Gen:
 
             # Process the repeated item `val` times
             for _ in range(val):
-                _Gen._compute_rep_instance_vals(item.item, state, instance_vals)
+                _Gen._compute_vl_instance_vals(item.item, state, instance_vals)
         elif type(item) is _Group:
             prev_labels = state.labels.copy()
 
             # Process each item
             for subitem in item.items:
-                _Gen._compute_rep_instance_vals(subitem, state, instance_vals)
+                _Gen._compute_vl_instance_vals(subitem, state, instance_vals)
 
             state.labels = prev_labels
 
         return instance_vals
 
-    def _zero_item_size(self, item: _Item, next_rep_instance: int):
-        return 0, next_rep_instance
+    def _zero_item_size(self, item: _Item, next_vl_instance: int):
+        return 0, next_vl_instance
 
-    def _scalar_item_size(self, item: _ScalarItem, next_rep_instance: int):
-        return item.size, next_rep_instance
+    def _scalar_item_size(self, item: _ScalarItem, next_vl_instance: int):
+        return item.size, next_vl_instance
 
-    def _group_item_size(self, item: _Group, next_rep_instance: int):
+    def _leb128_int_item_size(self, item: _Leb128Int, next_vl_instance: int):
+        # Get the value from `self._vl_instance_vals` _before_
+        # incrementing `next_vl_instance` to honor the order of
+        # _compute_vl_instance_vals().
+        return (
+            self._leb128_size_for_val(
+                self._vl_instance_vals[next_vl_instance], type(item) is _SLeb128Int
+            ),
+            next_vl_instance + 1,
+        )
+
+    def _group_item_size(self, item: _Group, next_vl_instance: int):
         size = 0
 
         for subitem in item.items:
-            subitem_size, next_rep_instance = self._item_size(
-                subitem, next_rep_instance
-            )
+            subitem_size, next_vl_instance = self._item_size(subitem, next_vl_instance)
             size += subitem_size
 
-        return size, next_rep_instance
+        return size, next_vl_instance
 
-    def _rep_item_size(self, item: _Rep, next_rep_instance: int):
-        # Get the value from `self._rep_instance_vals` _before_
-        # incrementing `next_rep_instance` to honor the order of
-        # _compute_rep_instance_vals().
-        mul = self._rep_instance_vals[next_rep_instance]
-        next_rep_instance += 1
+    def _rep_item_size(self, item: _Rep, next_vl_instance: int):
+        # Get the value from `self._vl_instance_vals` _before_
+        # incrementing `next_vl_instance` to honor the order of
+        # _compute_vl_instance_vals().
+        mul = self._vl_instance_vals[next_vl_instance]
+        next_vl_instance += 1
         size = 0
 
         for _ in range(mul):
-            iter_size, next_rep_instance = self._item_size(item.item, next_rep_instance)
+            iter_size, next_vl_instance = self._item_size(item.item, next_vl_instance)
             size += iter_size
 
-        return size, next_rep_instance
+        return size, next_vl_instance
 
     # Returns the size of `item` and the new next repetition instance.
-    def _item_size(self, item: _Item, next_rep_instance: int):
-        return self._item_size_funcs[type(item)](item, next_rep_instance)
+    def _item_size(self, item: _Item, next_vl_instance: int):
+        return self._item_size_funcs[type(item)](item, next_vl_instance)
 
     # Handles the byte item `item`.
-    def _handle_byte_item(self, item: _Byte, state: _GenState, next_rep_instance: int):
+    def _handle_byte_item(self, item: _Byte, state: _GenState, next_vl_instance: int):
         self._data.append(item.val)
         state.offset += item.size
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the string item `item`.
-    def _handle_str_item(self, item: _Str, state: _GenState, next_rep_instance: int):
+    def _handle_str_item(self, item: _Str, state: _GenState, next_vl_instance: int):
         self._data += item.data
         state.offset += item.size
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the byte order setting item `item`.
     def _handle_set_bo_item(
-        self, item: _SetBo, state: _GenState, next_rep_instance: int
+        self, item: _SetBo, state: _GenState, next_vl_instance: int
     ):
         # Update current byte order
         state.bo = item.bo
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the variable assignment item `item`.
     def _handle_var_assign_item(
-        self, item: _VarAssign, state: _GenState, next_rep_instance: int
+        self, item: _VarAssign, state: _GenState, next_vl_instance: int
     ):
         # Update variable
         state.variables[item.name] = self._eval_item_expr(item, state, True)
-        return next_rep_instance
+        return next_vl_instance
 
-    # Handles the value item `item`.
-    def _handle_val_item(self, item: _Val, state: _GenState, next_rep_instance: int):
+    # Handles the fixed-length integer item `item`.
+    def _handle_fl_int_item(
+        self, item: _FlInt, state: _GenState, next_vl_instance: int
+    ):
         # Compute value
         val = self._eval_item_expr(item, state, True)
 
@@ -1492,7 +1588,29 @@ class _Gen:
         # Append to current bytes and update offset
         self._data += data
         state.offset += len(data)
-        return next_rep_instance
+        return next_vl_instance
+
+    # Handles the LEB128 integer item `item`.
+    def _handle_leb128_int_item(
+        self, item: _Leb128Int, state: _GenState, next_vl_instance: int
+    ):
+        # Get the precomputed value
+        val = self._vl_instance_vals[next_vl_instance]
+
+        # Size in bytes
+        size = self._leb128_size_for_val(val, type(item) is _SLeb128Int)
+
+        # For each byte
+        for _ in range(size):
+            # Seven LSBs, MSB of the byte set (continue)
+            self._data.append((val & 0x7F) | 0x80)
+            val >>= 7
+
+        # Clear MSB of last byte (stop)
+        self._data[-1] &= ~0x80
+
+        # Consumed this instance
+        return next_vl_instance + 1
 
     # Handles the group item `item`, only removing the immediate labels
     # from `state.labels` if `remove_immediate_labels` is `True`.
@@ -1500,14 +1618,14 @@ class _Gen:
         self,
         item: _Group,
         state: _GenState,
-        next_rep_instance: int,
+        next_vl_instance: int,
         remove_immediate_labels: bool = True,
     ):
         # Compute the values of the immediate (not nested) labels. Those
         # labels are reachable by any expression within the group.
         offset = state.offset
         immediate_label_names = set()  # type: Set[str]
-        tmp_next_rep_instance = next_rep_instance
+        tmp_next_vl_instance = next_vl_instance
 
         for subitem in item.items:
             if type(subitem) is _SetOffset:
@@ -1518,14 +1636,14 @@ class _Gen:
                 state.labels[subitem.name] = offset
                 immediate_label_names.add(subitem.name)
 
-            subitem_size, tmp_next_rep_instance = self._item_size(
-                subitem, tmp_next_rep_instance
+            subitem_size, tmp_next_vl_instance = self._item_size(
+                subitem, tmp_next_vl_instance
             )
             offset += subitem_size
 
         # Handle each item now with the actual state
         for subitem in item.items:
-            next_rep_instance = self._handle_item(subitem, state, next_rep_instance)
+            next_vl_instance = self._handle_item(subitem, state, next_vl_instance)
 
         # Remove immediate labels if required so that outer items won't
         # reach inner labels.
@@ -1533,35 +1651,36 @@ class _Gen:
             for name in immediate_label_names:
                 del state.labels[name]
 
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the repetition item `item`.
-    def _handle_rep_item(self, item: _Rep, state: _GenState, next_rep_instance: int):
-        mul = self._rep_instance_vals[next_rep_instance]
-        next_rep_instance += 1
+    def _handle_rep_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
+        # Get the precomputed repetition count
+        mul = self._vl_instance_vals[next_vl_instance]
+
+        # Consumed this instance
+        next_vl_instance += 1
 
         for _ in range(mul):
-            next_rep_instance = self._handle_item(item.item, state, next_rep_instance)
+            next_vl_instance = self._handle_item(item.item, state, next_vl_instance)
 
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the offset setting item `item`.
     def _handle_set_offset_item(
-        self, item: _SetOffset, state: _GenState, next_rep_instance: int
+        self, item: _SetOffset, state: _GenState, next_vl_instance: int
     ):
         state.offset = item.val
-        return next_rep_instance
+        return next_vl_instance
 
     # Handles the label item `item`.
-    def _handle_label_item(
-        self, item: _Label, state: _GenState, next_rep_instance: int
-    ):
-        return next_rep_instance
+    def _handle_label_item(self, item: _Label, state: _GenState, next_vl_instance: int):
+        return next_vl_instance
 
     # Handles the item `item`, returning the updated next repetition
     # instance.
-    def _handle_item(self, item: _Item, state: _GenState, next_rep_instance: int):
-        return self._item_handlers[type(item)](item, state, next_rep_instance)
+    def _handle_item(self, item: _Item, state: _GenState, next_vl_instance: int):
+        return self._item_handlers[type(item)](item, state, next_vl_instance)
 
     # Generates the data (`self._data`) and final state
     # (`self._final_state`) from `group` and the initial state `state`.
@@ -1572,26 +1691,30 @@ class _Gen:
         # Item handlers
         self._item_handlers = {
             _Byte: self._handle_byte_item,
+            _FlInt: self._handle_fl_int_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,
             _Rep: self._handle_rep_item,
             _SetBo: self._handle_set_bo_item,
             _SetOffset: self._handle_set_offset_item,
+            _SLeb128Int: self._handle_leb128_int_item,
             _Str: self._handle_str_item,
-            _Val: self._handle_val_item,
+            _ULeb128Int: self._handle_leb128_int_item,
             _VarAssign: self._handle_var_assign_item,
         }  # type: Dict[type, Callable[[Any, _GenState, int], int]]
 
         # Item size getters
         self._item_size_funcs = {
             _Byte: self._scalar_item_size,
+            _FlInt: self._scalar_item_size,
             _Group: self._group_item_size,
             _Label: self._zero_item_size,
             _Rep: self._rep_item_size,
             _SetBo: self._zero_item_size,
             _SetOffset: self._zero_item_size,
+            _SLeb128Int: self._leb128_int_item_size,
             _Str: self._scalar_item_size,
-            _Val: self._scalar_item_size,
+            _ULeb128Int: self._leb128_int_item_size,
             _VarAssign: self._zero_item_size,
         }  # type: Dict[type, Callable[[Any, int], Tuple[int, int]]]
 
