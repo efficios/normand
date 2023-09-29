@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.4, meaning both the Normand
+WARNING: This version of Normand is 0.5, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -1053,9 +1053,6 @@ class ByteOrder(enum.Enum):
     LE = ...
 
 
-VarsT = typing.Dict[str, int]
-
-
 class TextLoc:
     # Line number.
     @property
@@ -1075,6 +1072,9 @@ class ParseError(RuntimeError):
         ...
 
 
+SymbolsT = typing.Dict[str, int]
+
+
 class ParseResult:
     # Generated data.
     @property
@@ -1083,12 +1083,12 @@ class ParseResult:
 
     # Updated variable values.
     @property
-    def variables(self) -> VarsT:
+    def variables(self) -> SymbolsT:
         ...
 
     # Updated main group label values.
     @property
-    def labels(self) -> VarsT:
+    def labels(self) -> SymbolsT:
         ...
 
     # Final offset.
@@ -1098,12 +1098,13 @@ class ParseResult:
 
     # Final byte order.
     @property
-    def byte_order(self) -> typing.Optional[int]:
+    def byte_order(self) -> typing.Optional[ByteOrder]:
         ...
 
+
 def parse(normand: str,
-          init_variables: typing.Optional[VarsT] = None,
-          init_labels: typing.Optional[VarsT] = None,
+          init_variables: typing.Optional[SymbolsT] = None,
+          init_labels: typing.Optional[SymbolsT] = None,
           init_offset: int = 0,
           init_byte_order: typing.Optional[ByteOrder] = None) -> ParseResult:
     ...

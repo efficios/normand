@@ -30,14 +30,14 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     "ByteOrder",
     "parse",
     "ParseError",
     "ParseResult",
     "TextLoc",
-    "VarsT",
+    "SymbolsT",
     "__author__",
     "__version__",
 ]
@@ -361,7 +361,7 @@ def _raise_error(msg: str, text_loc: TextLoc) -> NoReturn:
 
 
 # Variable/label dictionary type.
-VarsT = Dict[str, int]
+SymbolsT = Dict[str, int]
 
 
 # Python name pattern.
@@ -375,7 +375,7 @@ _py_name_pat = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 class _Parser:
     # Builds a parser to parse the Normand input `normand`, parsing
     # immediately.
-    def __init__(self, normand: str, variables: VarsT, labels: VarsT):
+    def __init__(self, normand: str, variables: SymbolsT, labels: SymbolsT):
         self._normand = normand
         self._at = 0
         self._line_no = 1
@@ -1016,8 +1016,8 @@ class ParseResult:
     def _create(
         cls,
         data: bytearray,
-        variables: VarsT,
-        labels: VarsT,
+        variables: SymbolsT,
+        labels: SymbolsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1031,8 +1031,8 @@ class ParseResult:
     def _init(
         self,
         data: bytearray,
-        variables: VarsT,
-        labels: VarsT,
+        variables: SymbolsT,
+        labels: SymbolsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1159,7 +1159,11 @@ class _ExprNamesVisitor(_NodeVisitor):
 # Generator state.
 class _GenState:
     def __init__(
-        self, variables: VarsT, labels: VarsT, offset: int, bo: Optional[ByteOrder]
+        self,
+        variables: SymbolsT,
+        labels: SymbolsT,
+        offset: int,
+        bo: Optional[ByteOrder],
     ):
         self.variables = variables.copy()
         self.labels = labels.copy()
@@ -1197,8 +1201,8 @@ class _Gen:
     def __init__(
         self,
         group: _Group,
-        variables: VarsT,
-        labels: VarsT,
+        variables: SymbolsT,
+        labels: SymbolsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1744,8 +1748,8 @@ class _Gen:
 # Raises `ParseError` on any parsing error.
 def parse(
     normand: str,
-    init_variables: Optional[VarsT] = None,
-    init_labels: Optional[VarsT] = None,
+    init_variables: Optional[SymbolsT] = None,
+    init_labels: Optional[SymbolsT] = None,
     init_offset: int = 0,
     init_byte_order: Optional[ByteOrder] = None,
 ):
