@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -1558,7 +1558,7 @@ class _Gen:
         self, item: _VarAssign, state: _GenState, next_vl_instance: int
     ):
         # Update variable
-        state.variables[item.name] = self._eval_item_expr(item, state, True)
+        state.variables[item.name] = self._eval_item_expr(item, state, True, True)
         return next_vl_instance
 
     # Handles the fixed-length integer item `item`.
