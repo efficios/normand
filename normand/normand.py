@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -54,7 +54,6 @@ from typing import (
     Set,
     Dict,
     List,
-    Tuple,
     Union,
     Pattern,
     Callable,
@@ -133,7 +132,7 @@ class _Byte(_ScalarItem, _RepableItem):
         return 1
 
     def __repr__(self):
-        return "_Byte({}, {})".format(hex(self._val), self._text_loc)
+        return "_Byte({}, {})".format(hex(self._val), repr(self._text_loc))
 
 
 # String.
@@ -152,7 +151,7 @@ class _Str(_ScalarItem, _RepableItem):
         return len(self._data)
 
     def __repr__(self):
-        return "_Str({}, {})".format(repr(self._data), self._text_loc)
+        return "_Str({}, {})".format(repr(self._data), repr(self._text_loc))
 
 
 # Byte order.
@@ -176,7 +175,7 @@ class _SetBo(_Item):
         return self._bo
 
     def __repr__(self):
-        return "_SetBo({}, {})".format(repr(self._bo), self._text_loc)
+        return "_SetBo({}, {})".format(repr(self._bo), repr(self._text_loc))
 
 
 # Label.
@@ -191,7 +190,7 @@ class _Label(_Item):
         return self._name
 
     def __repr__(self):
-        return "_Label({}, {})".format(repr(self._name), self._text_loc)
+        return "_Label({}, {})".format(repr(self._name), repr(self._text_loc))
 
 
 # Offset setting.
@@ -200,13 +199,36 @@ class _SetOffset(_Item):
         super().__init__(text_loc)
         self._val = val
 
-    # Offset value.
+    # Offset value (bytes).
     @property
     def val(self):
         return self._val
 
     def __repr__(self):
-        return "_SetOffset({}, {})".format(repr(self._val), self._text_loc)
+        return "_SetOffset({}, {})".format(repr(self._val), repr(self._text_loc))
+
+
+# Offset alignment.
+class _AlignOffset(_Item):
+    def __init__(self, val: int, pad_val: int, text_loc: TextLoc):
+        super().__init__(text_loc)
+        self._val = val
+        self._pad_val = pad_val
+
+    # Alignment value (bits).
+    @property
+    def val(self):
+        return self._val
+
+    # Padding byte value.
+    @property
+    def pad_val(self):
+        return self._pad_val
+
+    def __repr__(self):
+        return "_AlignOffset({}, {}, {})".format(
+            repr(self._val), repr(self._pad_val), repr(self._text_loc)
+        )
 
 
 # Mixin of containing an AST expression and its string.
@@ -242,7 +264,10 @@ class _VarAssign(_Item, _ExprMixin):
 
     def __repr__(self):
         return "_VarAssign({}, {}, {}, {})".format(
-            repr(self._name), repr(self._expr_str), repr(self._expr), self._text_loc
+            repr(self._name),
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._text_loc),
         )
 
 
@@ -266,7 +291,10 @@ class _FlNum(_ScalarItem, _RepableItem, _ExprMixin):
 
     def __repr__(self):
         return "_FlNum({}, {}, {}, {})".format(
-            repr(self._expr_str), repr(self._expr), repr(self._len), self._text_loc
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._len),
+            repr(self._text_loc),
         )
 
 
@@ -281,7 +309,7 @@ class _Leb128Int(_Item, _RepableItem, _ExprMixin):
             self.__class__.__name__,
             repr(self._expr_str),
             repr(self._expr),
-            self._text_loc,
+            repr(self._text_loc),
         )
 
 
@@ -307,7 +335,7 @@ class _Group(_Item, _RepableItem):
         return self._items
 
     def __repr__(self):
-        return "_Group({}, {})".format(repr(self._items), self._text_loc)
+        return "_Group({}, {})".format(repr(self._items), repr(self._text_loc))
 
 
 # Repetition item.
@@ -326,7 +354,10 @@ class _Rep(_Item, _ExprMixin):
 
     def __repr__(self):
         return "_Rep({}, {}, {}, {})".format(
-            repr(self._item), repr(self._expr_str), repr(self._expr), self._text_loc
+            repr(self._item),
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._text_loc),
         )
 
 
@@ -454,7 +485,7 @@ class _Parser:
 
     # Pattern for _skip_ws_and_comments()
     _ws_or_syms_or_comments_pat = re.compile(
-        r"(?:[\s!@/\\?&:;.,+[\]_=|-]|#[^#]*?(?:\n|#))*"
+        r"(?:[\s!/\\?&:;.,+[\]_=|-]|#[^#]*?(?:\n|#))*"
     )
 
     # Skips as many whitespaces, insignificant symbol characters, and
@@ -874,6 +905,57 @@ class _Parser:
         self._expect_pat(self._label_set_offset_suffix_pat, "Expecting `>`")
         return item
 
+    # Patterns for _try_parse_align_offset()
+    _align_offset_prefix_pat = re.compile(r"@\s*")
+    _align_offset_val_pat = re.compile(r"(\d+)\s*")
+    _align_offset_pad_val_prefix_pat = re.compile(r"~\s*")
+
+    # Tries to parse an offset alignment, returning an offset alignment
+    # item on success.
+    def _try_parse_align_offset(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._align_offset_prefix_pat) is None:
+            # No match
+            return
+
+        align_text_loc = self._text_loc
+        m = self._expect_pat(
+            self._align_offset_val_pat,
+            "Expecting an alignment (positive multiple of eight bits)",
+        )
+
+        # Validate alignment
+        val = int(m.group(1))
+
+        if val <= 0 or (val % 8) != 0:
+            _raise_error(
+                "Invalid alignment value {} (not a positive multiple of eight)".format(
+                    val
+                ),
+                align_text_loc,
+            )
+
+        # Padding value?
+        pad_val = 0
+
+        if self._try_parse_pat(self._align_offset_pad_val_prefix_pat) is not None:
+            pad_val_text_loc = self._text_loc
+            m = self._expect_pat(self._pos_const_int_pat, "Expecting a byte value")
+
+            # Validate
+            pad_val = int(m.group(0), 0)
+
+            if pad_val > 255:
+                _raise_error(
+                    "Invalid padding byte value {}".format(pad_val),
+                    pad_val_text_loc,
+                )
+
+        # Return item
+        return _AlignOffset(val, pad_val, begin_text_loc)
+
     # Tries to parse a base item (anything except a repetition),
     # returning it on success.
     def _try_parse_base_item(self):
@@ -897,6 +979,12 @@ class _Parser:
 
         # Label or offset setting item?
         item = self._try_parse_label_or_set_offset()
+
+        if item is not None:
+            return item
+
+        # Offset alignment item?
+        item = self._try_parse_align_offset()
 
         if item is not None:
             return item
@@ -1396,6 +1484,12 @@ class _Gen:
         # Seven bits per byte
         return math.ceil(bits / 7)
 
+    # Returns the offset `offset` aligned according to `item`.
+    @staticmethod
+    def _align_offset(offset: int, item: _AlignOffset):
+        align_bytes = item.val // 8
+        return (offset + align_bytes - 1) // align_bytes * align_bytes
+
     # Computes the effective value for each repetition and LEB128
     # integer instance, filling `instance_vals` (if not `None`) and
     # returning `instance_vals`.
@@ -1440,6 +1534,8 @@ class _Gen:
                 )
         elif type(item) is _SetOffset:
             state.offset = item.val
+        elif type(item) is _AlignOffset:
+            state.offset = _Gen._align_offset(state.offset, item)
         elif isinstance(item, _Leb128Int):
             # Evaluate the expression
             val = _Gen._eval_item_expr(item, state, True)
@@ -1489,49 +1585,64 @@ class _Gen:
 
         return instance_vals
 
-    def _zero_item_size(self, item: _Item, next_vl_instance: int):
-        return 0, next_vl_instance
+    def _update_offset_noop(self, item: _Item, state: _GenState, next_vl_instance: int):
+        return next_vl_instance
 
-    def _scalar_item_size(self, item: _ScalarItem, next_vl_instance: int):
-        return item.size, next_vl_instance
+    def _dry_handle_scalar_item(
+        self, item: _ScalarItem, state: _GenState, next_vl_instance: int
+    ):
+        state.offset += item.size
+        return next_vl_instance
 
-    def _leb128_int_item_size(self, item: _Leb128Int, next_vl_instance: int):
+    def _dry_handle_leb128_int_item(
+        self, item: _Leb128Int, state: _GenState, next_vl_instance: int
+    ):
         # Get the value from `self._vl_instance_vals` _before_
         # incrementing `next_vl_instance` to honor the order of
         # _compute_vl_instance_vals().
-        return (
-            self._leb128_size_for_val(
-                self._vl_instance_vals[next_vl_instance], type(item) is _SLeb128Int
-            ),
-            next_vl_instance + 1,
+        state.offset += self._leb128_size_for_val(
+            self._vl_instance_vals[next_vl_instance], type(item) is _SLeb128Int
         )
 
-    def _group_item_size(self, item: _Group, next_vl_instance: int):
-        size = 0
+        return next_vl_instance + 1
 
+    def _dry_handle_group_item(
+        self, item: _Group, state: _GenState, next_vl_instance: int
+    ):
         for subitem in item.items:
-            subitem_size, next_vl_instance = self._item_size(subitem, next_vl_instance)
-            size += subitem_size
+            next_vl_instance = self._dry_handle_item(subitem, state, next_vl_instance)
 
-        return size, next_vl_instance
+        return next_vl_instance
 
-    def _rep_item_size(self, item: _Rep, next_vl_instance: int):
+    def _dry_handle_rep_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
         # Get the value from `self._vl_instance_vals` _before_
         # incrementing `next_vl_instance` to honor the order of
         # _compute_vl_instance_vals().
         mul = self._vl_instance_vals[next_vl_instance]
         next_vl_instance += 1
-        size = 0
 
         for _ in range(mul):
-            iter_size, next_vl_instance = self._item_size(item.item, next_vl_instance)
-            size += iter_size
+            next_vl_instance = self._dry_handle_item(item.item, state, next_vl_instance)
 
-        return size, next_vl_instance
+        return next_vl_instance
 
-    # Returns the size of `item` and the new next repetition instance.
-    def _item_size(self, item: _Item, next_vl_instance: int):
-        return self._item_size_funcs[type(item)](item, next_vl_instance)
+    def _dry_handle_align_offset_item(
+        self, item: _AlignOffset, state: _GenState, next_vl_instance: int
+    ):
+        state.offset = self._align_offset(state.offset, item)
+        return next_vl_instance
+
+    def _dry_handle_set_offset_item(
+        self, item: _SetOffset, state: _GenState, next_vl_instance: int
+    ):
+        state.offset = item.val
+        return next_vl_instance
+
+    # Updates `state.offset` considering the generated data of `item`,
+    # without generating any, and returns the updated next
+    # variable-length item instance.
+    def _dry_handle_item(self, item: _Item, state: _GenState, next_vl_instance: int):
+        return self._dry_handle_item_funcs[type(item)](item, state, next_vl_instance)
 
     # Handles the byte item `item`.
     def _handle_byte_item(self, item: _Byte, state: _GenState, next_vl_instance: int):
@@ -1677,23 +1788,19 @@ class _Gen:
     ):
         # Compute the values of the immediate (not nested) labels. Those
         # labels are reachable by any expression within the group.
-        offset = state.offset
+        tmp_state = _GenState({}, {}, state.offset, None)
         immediate_label_names = set()  # type: Set[str]
         tmp_next_vl_instance = next_vl_instance
 
         for subitem in item.items:
-            if type(subitem) is _SetOffset:
-                # Update offset
-                offset = subitem.val
-            elif type(subitem) is _Label:
+            if type(subitem) is _Label:
                 # New immediate label
-                state.labels[subitem.name] = offset
+                state.labels[subitem.name] = tmp_state.offset
                 immediate_label_names.add(subitem.name)
 
-            subitem_size, tmp_next_vl_instance = self._item_size(
-                subitem, tmp_next_vl_instance
+            tmp_next_vl_instance = self._dry_handle_item(
+                subitem, tmp_state, tmp_next_vl_instance
             )
-            offset += subitem_size
 
         # Handle each item now with the actual state
         for subitem in item.items:
@@ -1727,6 +1834,15 @@ class _Gen:
         state.offset = item.val
         return next_vl_instance
 
+    # Handles offset alignment item `item` (adds padding).
+    def _handle_align_offset_item(
+        self, item: _AlignOffset, state: _GenState, next_vl_instance: int
+    ):
+        init_offset = state.offset
+        state.offset = self._align_offset(state.offset, item)
+        self._data += bytes([item.pad_val] * (state.offset - init_offset))
+        return next_vl_instance
+
     # Handles the label item `item`.
     def _handle_label_item(self, item: _Label, state: _GenState, next_vl_instance: int):
         return next_vl_instance
@@ -1744,6 +1860,7 @@ class _Gen:
 
         # Item handlers
         self._item_handlers = {
+            _AlignOffset: self._handle_align_offset_item,
             _Byte: self._handle_byte_item,
             _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
@@ -1757,20 +1874,21 @@ class _Gen:
             _VarAssign: self._handle_var_assign_item,
         }  # type: Dict[type, Callable[[Any, _GenState, int], int]]
 
-        # Item size getters
-        self._item_size_funcs = {
-            _Byte: self._scalar_item_size,
-            _FlNum: self._scalar_item_size,
-            _Group: self._group_item_size,
-            _Label: self._zero_item_size,
-            _Rep: self._rep_item_size,
-            _SetBo: self._zero_item_size,
-            _SetOffset: self._zero_item_size,
-            _SLeb128Int: self._leb128_int_item_size,
-            _Str: self._scalar_item_size,
-            _ULeb128Int: self._leb128_int_item_size,
-            _VarAssign: self._zero_item_size,
-        }  # type: Dict[type, Callable[[Any, int], Tuple[int, int]]]
+        # Dry item handlers (only updates the state offset)
+        self._dry_handle_item_funcs = {
+            _AlignOffset: self._dry_handle_align_offset_item,
+            _Byte: self._dry_handle_scalar_item,
+            _FlNum: self._dry_handle_scalar_item,
+            _Group: self._dry_handle_group_item,
+            _Label: self._update_offset_noop,
+            _Rep: self._dry_handle_rep_item,
+            _SetBo: self._update_offset_noop,
+            _SetOffset: self._dry_handle_set_offset_item,
+            _SLeb128Int: self._dry_handle_leb128_int_item,
+            _Str: self._dry_handle_scalar_item,
+            _ULeb128Int: self._dry_handle_leb128_int_item,
+            _VarAssign: self._update_offset_noop,
+        }  # type: Dict[type, Callable[[Any, _GenState, int], int]]
 
         # Handle the group item, _not_ removing the immediate labels
         # because the `labels` property offers them.

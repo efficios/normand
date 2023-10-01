@@ -1,0 +1,4 @@
+88 44 @16~256 "meow"
+@ 56 ~ 127 $132
+---
+1:11 - Invalid padding byte value 256
