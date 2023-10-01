@@ -810,7 +810,7 @@ aa bb cc dd ee ff 11 22  33 44 55 04 0f  ┆ •••••••"3DU••
 
 === Current offset alignment
 
-An _current offset alignment_ represents zero or more padding bytes to
+A _current offset alignment_ represents zero or more padding bytes to
 make the <<cur-offset,current offset>> meet a given
 https://en.wikipedia.org/wiki/Data_structure_alignment[alignment] value.
 
