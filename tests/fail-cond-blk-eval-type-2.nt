@@ -1,0 +1,3 @@
+!if {3.4} 77 !end
+---
+1:1 - Invalid expression `3.4`: expecting result type `int`, not `float`
