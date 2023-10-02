@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.9, meaning both the Normand
+WARNING: This version of Normand is 0.10, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -411,10 +411,10 @@ A Normand comment may exist:
 * Between the last item and the ``pass:[*]`` character of a post-item
   repetition, and between that ``pass:[*]`` character and the following
   number or expression.
-* Between the ``!repeat``/``!r`` prefix and the following constant
-  integer, name, or expression of a repetition block.
-* Between the ``!if`` prefix and the following name or expression of a
-  conditional block.
+* Between the ``!repeat``/``!r`` block opening and the following
+  constant integer, name, or expression of a repetition block.
+* Between the ``!if`` block opening and the following name or expression
+  of a conditional block.
 
 A comment is anything between two ``pass:[#]`` characters on the same
 line, or from ``pass:[#]`` until the end of the line. Whitespaces and
@@ -998,11 +998,20 @@ than a single item and to isolate labels.
 
 A group is:
 
-. The `(` prefix.
+. The `(`, `!group`, or `!g` opening.
 
 . Zero or more items.
 
-. The `)` suffix.
+. Depending on the group opening:
++
+--
+`(`::
+    The `)` closing.
+
+`!group`::
+`!g`::
+    The `!end` closing.
+--
 
 ====
 Input:
@@ -1022,7 +1031,9 @@ aa bb cc dd ee 6c 65 63  6c 65 72 63  ┆ •••••leclerc
 Input:
 
 ----
-((aa bb cc) * 3 dd ee) * 5
+!group
+  (aa bb cc) * 3 dd ee
+!end * 5
 ----
 
 Output:
@@ -1067,7 +1078,7 @@ if some expression is true, or no bytes at all if it's false.
 
 A conditional block is:
 
-. The `!if` prefix.
+. The `!if` opening.
 
 . One of:
 
@@ -1097,7 +1108,7 @@ For the name `__NAME__`, this is equivalent to the
 
 . Zero or more items.
 
-. The `!end` suffix.
+. The `!end` closing.
 
 ====
 Input:
@@ -1157,7 +1168,7 @@ a given number of times.
 
 A repetition block is:
 
-. The `!repeat` or `!r` prefix.
+. The `!repeat` or `!r` opening.
 
 . One of:
 
@@ -1190,7 +1201,7 @@ For the name `__NAME__`, this is equivalent to the
 
 . Zero or more items.
 
-. The `!end` suffix.
+. The `!end` closing.
 
 You may also use a <<post-item-repetition,post-item repetition>> after
 some items. The form ``!repeat{nbsp}__X__{nbsp}__ITEMS__{nbsp}!end``

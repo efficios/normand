@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -665,15 +665,17 @@ class _Parser:
         return _Str(data, begin_text_loc)
 
     # Patterns for _try_parse_group()
-    _group_prefix_pat = re.compile(r"\(")
-    _group_suffix_pat = re.compile(r"\)")
+    _group_prefix_pat = re.compile(r"\(|!g(roup)?\b")
+    _group_suffix_paren_pat = re.compile(r"\)")
 
     # Tries to parse a group, returning a group item on success.
     def _try_parse_group(self):
         begin_text_loc = self._text_loc
 
         # Match prefix
-        if self._try_parse_pat(self._group_prefix_pat) is None:
+        m_open = self._try_parse_pat(self._group_prefix_pat)
+
+        if m_open is None:
             # No match
             return
 
@@ -682,9 +684,15 @@ class _Parser:
 
         # Expect end of group
         self._skip_ws_and_comments()
-        self._expect_pat(
-            self._group_suffix_pat, "Expecting an item or `)` (end of group)"
-        )
+
+        if m_open.group(0) == "(":
+            pat = self._group_suffix_paren_pat
+            exp = ")"
+        else:
+            pat = self._block_end_pat
+            exp = "!end"
+
+        self._expect_pat(pat, "Expecting an item or `{}` (end of group)".format(exp))
 
         # Return item
         return _Group(items, begin_text_loc)

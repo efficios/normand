@@ -1,0 +1,10 @@
+00
+!group
+  11 22 33
+  !group
+    aa bb cc
+  !end
+!end
+dd
+---
+00 11 22 33 aa bb cc dd
