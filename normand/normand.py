@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 __all__ = [
     "ByteOrder",
     "parse",
@@ -353,8 +353,31 @@ class _Rep(_Item, _ExprMixin):
         )
 
 
+# Conditional item.
+class _Cond(_Item, _ExprMixin):
+    def __init__(
+        self, item: _Item, expr_str: str, expr: ast.Expression, text_loc: TextLocation
+    ):
+        super().__init__(text_loc)
+        _ExprMixin.__init__(self, expr_str, expr)
+        self._item = item
+
+    # Conditional item.
+    @property
+    def item(self):
+        return self._item
+
+    def __repr__(self):
+        return "_Cond({}, {}, {}, {})".format(
+            repr(self._item),
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._text_loc),
+        )
+
+
 # Expression item type.
-_ExprItemT = Union[_FlNum, _Leb128Int, _VarAssign, _Rep]
+_ExprItemT = Union[_FlNum, _Leb128Int, _VarAssign, _Rep, _Cond]
 
 
 # A parsing error containing a message and a text location.
@@ -953,17 +976,21 @@ class _Parser:
         return _AlignOffset(val, pad_val, begin_text_loc)
 
     # Patterns for _expect_rep_mul_expr()
-    _rep_expr_prefix_pat = re.compile(r"\{")
-    _rep_expr_pat = re.compile(r"[^}p]+")
-    _rep_expr_suffix_pat = re.compile(r"\}")
+    _rep_cond_expr_prefix_pat = re.compile(r"\{")
+    _rep_cond_expr_pat = re.compile(r"[^}]+")
+    _rep_cond_expr_suffix_pat = re.compile(r"\}")
 
-    # Parses the multiplier expression of a repetition (block or
-    # post-item) and returns the expression string and AST node.
-    def _expect_rep_mul_expr(self):
+    # Parses the expression of a conditional block or of a repetition
+    # (block or post-item) and returns the expression string and AST
+    # node.
+    def _expect_rep_cond_expr(self, accept_int: bool):
         expr_text_loc = self._text_loc
 
         # Constant integer?
-        m = self._try_parse_pat(self._pos_const_int_pat)
+        m = None
+
+        if accept_int:
+            m = self._try_parse_pat(self._pos_const_int_pat)
 
         if m is None:
             # Name?
@@ -971,19 +998,22 @@ class _Parser:
 
             if m is None:
                 # Expression?
-                if self._try_parse_pat(self._rep_expr_prefix_pat) is None:
+                if self._try_parse_pat(self._rep_cond_expr_prefix_pat) is None:
+                    if accept_int:
+                        mid_msg = "a positive constant integer, a name, or `{`"
+                    else:
+                        mid_msg = "a name or `{`"
+
                     # At this point it's invalid
-                    self._raise_error(
-                        "Expecting a positive integral multiplier, a name, or `{`"
-                    )
+                    self._raise_error("Expecting {}".format(mid_msg))
 
                 # Expect an expression
                 expr_text_loc = self._text_loc
-                m = self._expect_pat(self._rep_expr_pat, "Expecting an expression")
+                m = self._expect_pat(self._rep_cond_expr_pat, "Expecting an expression")
                 expr_str = m.group(0)
 
                 # Expect `}`
-                self._expect_pat(self._rep_expr_suffix_pat, "Expecting `}`")
+                self._expect_pat(self._rep_cond_expr_suffix_pat, "Expecting `}`")
             else:
                 expr_str = m.group(0)
         else:
@@ -991,9 +1021,16 @@ class _Parser:
 
         return self._ast_expr_from_str(expr_str, expr_text_loc)
 
+    # Parses the multiplier expression of a repetition (block or
+    # post-item) and returns the expression string and AST node.
+    def _expect_rep_mul_expr(self):
+        return self._expect_rep_cond_expr(True)
+
+    # Common block end pattern
+    _block_end_pat = re.compile(r"!end\b\s*")
+
     # Pattern for _try_parse_rep_block()
     _rep_block_prefix_pat = re.compile(r"!r(?:epeat)?\b\s*")
-    _rep_block_end_pat = re.compile(r"!end\b\s*")
 
     # Tries to parse a repetition block, returning a repetition item on
     # success.
@@ -1017,11 +1054,43 @@ class _Parser:
         # Expect end of block
         self._skip_ws_and_comments()
         self._expect_pat(
-            self._rep_block_end_pat, "Expecting an item or `!end` (end of repetition)"
+            self._block_end_pat, "Expecting an item or `!end` (end of repetition block)"
         )
 
         # Return item
         return _Rep(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
+
+    # Pattern for _try_parse_cond_block()
+    _cond_block_prefix_pat = re.compile(r"!if\b\s*")
+
+    # Tries to parse a conditional block, returning a conditional item
+    # on success.
+    def _try_parse_cond_block(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._cond_block_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect expression
+        self._skip_ws_and_comments()
+        expr_str, expr = self._expect_rep_cond_expr(False)
+
+        # Parse items
+        self._skip_ws_and_comments()
+        items_text_loc = self._text_loc
+        items = self._parse_items()
+
+        # Expect end of block
+        self._skip_ws_and_comments()
+        self._expect_pat(
+            self._block_end_pat,
+            "Expecting an item or `!end` (end of conditional block)",
+        )
+
+        # Return item
+        return _Cond(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
 
     # Tries to parse a base item (anything except a repetition),
     # returning it on success.
@@ -1064,6 +1133,12 @@ class _Parser:
 
         # Repetition (block) item?
         item = self._try_parse_rep_block()
+
+        if item is not None:
+            return item
+
+        # Conditional block item?
+        item = self._try_parse_cond_block()
 
         if item is not None:
             return item
@@ -1305,18 +1380,19 @@ class _GenState:
 #
 # The steps of generation are:
 #
-# 1. Validate that each repetition and LEB128 integer expression uses
-#    only reachable names.
+# 1. Validate that each repetition, conditional, and LEB128 integer
+#    expression uses only reachable names.
 #
-# 2. Compute and keep the effective repetition count and LEB128 integer
-#    value for each repetition and LEB128 integer instance.
+# 2. Compute and keep the effective repetition count, conditional value,
+#    and LEB128 integer value for each repetition and LEB128 integer
+#    instance.
 #
 # 3. Generate bytes, updating the initial state as it goes which becomes
 #    the final state after the operation.
 #
-#    During the generation, when handling a `_Rep` or `_Leb128Int` item,
-#    we already have the effective repetition count or value of the
-#    instance.
+#    During the generation, when handling a `_Rep`, `_Cond`, or
+#    `_Leb128Int` item, we already have the effective repetition count,
+#    conditional value, or value of the instance.
 #
 #    When handling a `_Group` item, first update the current labels with
 #    all the immediate (not nested) labels, and then handle each
@@ -1371,9 +1447,9 @@ class _Gen:
         visitor.visit(expr)
         return visitor.names
 
-    # Validates that all the repetition and LEB128 integer expressions
-    # within `group` don't refer, directly or indirectly, to subsequent
-    # labels.
+    # Validates that all the repetition, conditional, and LEB128 integer
+    # expressions within `group` don't refer, directly or indirectly, to
+    # subsequent labels.
     #
     # The strategy here is to keep a set of allowed label names, per
     # group, initialized to `allowed_label_names`, and a set of allowed
@@ -1394,7 +1470,7 @@ class _Gen:
     #     it's in there): a variable which refers to an unreachable name
     #     is unreachable itself.
     #
-    # `_Rep` and `_Leb128`:
+    # `_Rep`, `_Cond`, and `_Leb128`:
     #     Make sure all the names within its expression are allowed.
     #
     # `_Group`:
@@ -1428,7 +1504,7 @@ class _Gen:
             _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
                 item.expr
             )
-        elif type(item) is _Rep:
+        elif type(item) is _Rep or type(item) is _Cond:
             # Validate the expression first
             _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
                 item.expr
@@ -1480,6 +1556,10 @@ class _Gen:
                 item,
             )
 
+        # Convert `bool` result type to `int` to normalize
+        if type(val) is bool:
+            val = int(val)
+
         # Validate result type
         expected_types = {int}  # type: Set[type]
         type_msg = "`int`"
@@ -1524,15 +1604,16 @@ class _Gen:
         align_bytes = item.val // 8
         return (offset + align_bytes - 1) // align_bytes * align_bytes
 
-    # Computes the effective value for each repetition and LEB128
-    # integer instance, filling `instance_vals` (if not `None`) and
-    # returning `instance_vals`.
+    # Computes the effective value for each repetition, conditional, and
+    # LEB128 integer instance, filling `instance_vals` (if not `None`)
+    # and returning `instance_vals`.
     #
     # At this point it must be known that, for a given variable-length
     # item, its expression only contains reachable names.
     #
-    # When handling a `_Rep` item, this function appends its effective
-    # multiplier to `instance_vals` _before_ handling its repeated item.
+    # When handling a `_Rep` or `_Cond` item, this function appends its
+    # effective multiplier/value to `instance_vals` _before_ handling
+    # its repeated/conditional item.
     #
     # When handling a `_VarAssign` item, this function only evaluates it
     # if all its names are reachable.
@@ -1600,11 +1681,21 @@ class _Gen:
                     item,
                 )
 
-            # Add to repetition instance values
+            # Add to variable-length item instance values
             instance_vals.append(val)
 
             # Process the repeated item `val` times
             for _ in range(val):
+                _Gen._compute_vl_instance_vals(item.item, state, instance_vals)
+        elif type(item) is _Cond:
+            # Evaluate the expression and keep the result
+            val = _Gen._eval_item_expr(item, state)
+
+            # Add to variable-length item instance values
+            instance_vals.append(val)
+
+            # Process the conditional item if needed
+            if val:
                 _Gen._compute_vl_instance_vals(item.item, state, instance_vals)
         elif type(item) is _Group:
             prev_labels = state.labels.copy()
@@ -1654,6 +1745,20 @@ class _Gen:
         next_vl_instance += 1
 
         for _ in range(mul):
+            next_vl_instance = self._dry_handle_item(item.item, state, next_vl_instance)
+
+        return next_vl_instance
+
+    def _dry_handle_cond_item(
+        self, item: _Cond, state: _GenState, next_vl_instance: int
+    ):
+        # Get the value from `self._vl_instance_vals` _before_
+        # incrementing `next_vl_instance` to honor the order of
+        # _compute_vl_instance_vals().
+        val = self._vl_instance_vals[next_vl_instance]
+        next_vl_instance += 1
+
+        if val:
             next_vl_instance = self._dry_handle_item(item.item, state, next_vl_instance)
 
         return next_vl_instance
@@ -1859,6 +1964,19 @@ class _Gen:
 
         return next_vl_instance
 
+    # Handles the conditional item `item`.
+    def _handle_cond_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
+        # Get the precomputed conditional value
+        val = self._vl_instance_vals[next_vl_instance]
+
+        # Consumed this instance
+        next_vl_instance += 1
+
+        if val:
+            next_vl_instance = self._handle_item(item.item, state, next_vl_instance)
+
+        return next_vl_instance
+
     # Handles the offset setting item `item`.
     def _handle_set_offset_item(
         self, item: _SetOffset, state: _GenState, next_vl_instance: int
@@ -1894,6 +2012,7 @@ class _Gen:
         self._item_handlers = {
             _AlignOffset: self._handle_align_offset_item,
             _Byte: self._handle_byte_item,
+            _Cond: self._handle_cond_item,
             _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,
@@ -1910,6 +2029,7 @@ class _Gen:
         self._dry_handle_item_funcs = {
             _AlignOffset: self._dry_handle_align_offset_item,
             _Byte: self._dry_handle_scalar_item,
+            _Cond: self._dry_handle_cond_item,
             _FlNum: self._dry_handle_scalar_item,
             _Group: self._dry_handle_group_item,
             _Label: self._update_offset_noop,

@@ -1,0 +1,12 @@
+aa bb cc
+
+(
+  "foo"
+
+  !if {ICITTE > 10}
+    "bar"
+  !end
+) * 4
+---
+aa bb cc 66 6f 6f 66 6f 6f 66 6f 6f 62 61 72 66
+6f 6f 62 61 72

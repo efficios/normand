@@ -1,0 +1,3 @@
+aa {meow = 5} dd !if {meow < 5} bb !end cc
+---
+aa dd cc

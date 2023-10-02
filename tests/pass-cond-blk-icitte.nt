@@ -1,0 +1,15 @@
+!if ICITTE
+  ff
+!end
+
+aa bb cc
+
+!if ICITTE
+  dd
+!end
+
+ee ff
+---
+aa bb cc
+dd
+ee ff

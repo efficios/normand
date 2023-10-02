@@ -1,0 +1,19 @@
+{at = 1}
+{rep_count = 9}
+
+!repeat rep_count
+  "meow "
+
+  !if {ICITTE > 25}
+    "mix"
+
+    !if {at < rep_count} 20 !end
+  !end
+
+  {at = at + 1}
+!end
+---
+6d 65 6f 77 20 6d 65 6f 77 20 6d 65 6f 77 20 6d
+65 6f 77 20 6d 65 6f 77 20 6d 65 6f 77 20 6d 69
+78 20 6d 65 6f 77 20 6d 69 78 20 6d 65 6f 77 20
+6d 69 78 20 6d 65 6f 77 20 6d 69 78

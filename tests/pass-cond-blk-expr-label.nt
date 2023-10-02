@@ -1,0 +1,11 @@
+aa bb
+<meow>
+cc
+!if {meow == 2} dd !end
+!if {meow != 2} 88 !end
+ee ff
+---
+aa bb
+cc
+dd
+ee ff

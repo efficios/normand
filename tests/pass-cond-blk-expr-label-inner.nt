@@ -1,0 +1,23 @@
+11
+!repeat 2
+  aa bb
+  <meow>
+  cc
+  !if meow dd !end
+  ee ff
+!end
+22
+---
+11
+
+aa bb
+cc
+dd
+ee ff
+
+aa bb
+cc
+dd
+ee ff
+
+22

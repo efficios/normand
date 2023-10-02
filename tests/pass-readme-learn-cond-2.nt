@@ -1,0 +1,10 @@
+<str_beg>
+u16le"meow mix!"
+<str_end>
+
+!if {str_end - str_beg > 10}
+  " BIG"
+!end
+---
+6d 00 65 00 6f 00 77 00 20 00 6d 00 69 00 78 00
+21 00 20 42 49 47

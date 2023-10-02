@@ -1,0 +1,9 @@
+aa bb
+{meow = 3}
+cc !if meow dd !end
+ee ff
+---
+aa bb
+cc
+dd
+ee ff
