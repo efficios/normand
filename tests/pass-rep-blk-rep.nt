@@ -1,0 +1,12 @@
+!repeat 2
+  !repeat 8
+    !repeat 4
+      AA
+    !end
+  !end
+!end
+---
+aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa
+aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa
+aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa
+aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa aa

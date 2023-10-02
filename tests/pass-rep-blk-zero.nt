@@ -1,0 +1,3 @@
+aa !repeat 0 bb !end cc
+---
+aa cc

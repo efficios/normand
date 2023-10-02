@@ -1,0 +1,30 @@
+{times = 1}
+
+aa bb cc dd
+
+!repeat 3
+  <here>
+
+  !repeat {here + 1}
+    ee ff
+  !end
+
+  11 22 !repeat times 33 !end
+
+  {times = times + 1}
+!end
+
+"coucou!"
+---
+aa bb cc dd ee ff ee ff ee ff ee ff ee ff 11 22
+33 ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff 11 22 33 33 ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff ee ff ee
+ff ee ff ee ff ee ff ee ff ee ff ee ff 11 22 33
+33 33 63 6f 75 63 6f 75 21

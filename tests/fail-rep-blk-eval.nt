@@ -1,0 +1,3 @@
+aa !repeat { 23 + zoom(14) } bb !end
+---
+1:4 - Failed to evaluate expression `23 + zoom(14)`: name 'zoom' is not defined

@@ -30,14 +30,15 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 __all__ = [
     "ByteOrder",
     "parse",
     "ParseError",
     "ParseResult",
-    "TextLoc",
-    "SymbolsT",
+    "TextLocation",
+    "LabelsT",
+    "VariablesT",
     "__author__",
     "__version__",
 ]
@@ -49,21 +50,12 @@ import sys
 import enum
 import math
 import struct
-from typing import (
-    Any,
-    Set,
-    Dict,
-    List,
-    Union,
-    Pattern,
-    Callable,
-    NoReturn,
-    Optional,
-)
+import typing
+from typing import Any, Set, Dict, List, Union, Pattern, Callable, NoReturn, Optional
 
 
 # Text location (line and column numbers).
-class TextLoc:
+class TextLocation:
     @classmethod
     def _create(cls, line_no: int, col_no: int):
         self = cls.__new__(cls)
@@ -88,12 +80,12 @@ class TextLoc:
         return self._col_no
 
     def __repr__(self):
-        return "TextLoc({}, {})".format(self._line_no, self._col_no)
+        return "TextLocation({}, {})".format(self._line_no, self._col_no)
 
 
 # Any item.
 class _Item:
-    def __init__(self, text_loc: TextLoc):
+    def __init__(self, text_loc: TextLocation):
         self._text_loc = text_loc
 
     # Source text location.
@@ -118,7 +110,7 @@ class _RepableItem:
 
 # Single byte.
 class _Byte(_ScalarItem, _RepableItem):
-    def __init__(self, val: int, text_loc: TextLoc):
+    def __init__(self, val: int, text_loc: TextLocation):
         super().__init__(text_loc)
         self._val = val
 
@@ -137,7 +129,7 @@ class _Byte(_ScalarItem, _RepableItem):
 
 # String.
 class _Str(_ScalarItem, _RepableItem):
-    def __init__(self, data: bytes, text_loc: TextLoc):
+    def __init__(self, data: bytes, text_loc: TextLocation):
         super().__init__(text_loc)
         self._data = data
 
@@ -166,7 +158,7 @@ class ByteOrder(enum.Enum):
 
 # Byte order setting.
 class _SetBo(_Item):
-    def __init__(self, bo: ByteOrder, text_loc: TextLoc):
+    def __init__(self, bo: ByteOrder, text_loc: TextLocation):
         super().__init__(text_loc)
         self._bo = bo
 
@@ -180,7 +172,7 @@ class _SetBo(_Item):
 
 # Label.
 class _Label(_Item):
-    def __init__(self, name: str, text_loc: TextLoc):
+    def __init__(self, name: str, text_loc: TextLocation):
         super().__init__(text_loc)
         self._name = name
 
@@ -195,7 +187,7 @@ class _Label(_Item):
 
 # Offset setting.
 class _SetOffset(_Item):
-    def __init__(self, val: int, text_loc: TextLoc):
+    def __init__(self, val: int, text_loc: TextLocation):
         super().__init__(text_loc)
         self._val = val
 
@@ -210,7 +202,7 @@ class _SetOffset(_Item):
 
 # Offset alignment.
 class _AlignOffset(_Item):
-    def __init__(self, val: int, pad_val: int, text_loc: TextLoc):
+    def __init__(self, val: int, pad_val: int, text_loc: TextLocation):
         super().__init__(text_loc)
         self._val = val
         self._pad_val = pad_val
@@ -251,7 +243,7 @@ class _ExprMixin:
 # Variable assignment.
 class _VarAssign(_Item, _ExprMixin):
     def __init__(
-        self, name: str, expr_str: str, expr: ast.Expression, text_loc: TextLoc
+        self, name: str, expr_str: str, expr: ast.Expression, text_loc: TextLocation
     ):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
@@ -274,7 +266,7 @@ class _VarAssign(_Item, _ExprMixin):
 # Fixed-length number, possibly needing more than one byte.
 class _FlNum(_ScalarItem, _RepableItem, _ExprMixin):
     def __init__(
-        self, expr_str: str, expr: ast.Expression, len: int, text_loc: TextLoc
+        self, expr_str: str, expr: ast.Expression, len: int, text_loc: TextLocation
     ):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
@@ -300,7 +292,7 @@ class _FlNum(_ScalarItem, _RepableItem, _ExprMixin):
 
 # LEB128 integer.
 class _Leb128Int(_Item, _RepableItem, _ExprMixin):
-    def __init__(self, expr_str: str, expr: ast.Expression, text_loc: TextLoc):
+    def __init__(self, expr_str: str, expr: ast.Expression, text_loc: TextLocation):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
 
@@ -325,7 +317,7 @@ class _SLeb128Int(_Leb128Int, _RepableItem, _ExprMixin):
 
 # Group of items.
 class _Group(_Item, _RepableItem):
-    def __init__(self, items: List[_Item], text_loc: TextLoc):
+    def __init__(self, items: List[_Item], text_loc: TextLocation):
         super().__init__(text_loc)
         self._items = items
 
@@ -341,7 +333,7 @@ class _Group(_Item, _RepableItem):
 # Repetition item.
 class _Rep(_Item, _ExprMixin):
     def __init__(
-        self, item: _Item, expr_str: str, expr: ast.Expression, text_loc: TextLoc
+        self, item: _Item, expr_str: str, expr: ast.Expression, text_loc: TextLocation
     ):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
@@ -368,7 +360,7 @@ _ExprItemT = Union[_FlNum, _Leb128Int, _VarAssign, _Rep]
 # A parsing error containing a message and a text location.
 class ParseError(RuntimeError):
     @classmethod
-    def _create(cls, msg: str, text_loc: TextLoc):
+    def _create(cls, msg: str, text_loc: TextLocation):
         self = cls.__new__(cls)
         self._init(msg, text_loc)
         return self
@@ -376,7 +368,7 @@ class ParseError(RuntimeError):
     def __init__(self, *args, **kwargs):  # type: ignore
         raise NotImplementedError
 
-    def _init(self, msg: str, text_loc: TextLoc):
+    def _init(self, msg: str, text_loc: TextLocation):
         super().__init__(msg)
         self._text_loc = text_loc
 
@@ -387,12 +379,16 @@ class ParseError(RuntimeError):
 
 
 # Raises a parsing error, forwarding the parameters to the constructor.
-def _raise_error(msg: str, text_loc: TextLoc) -> NoReturn:
+def _raise_error(msg: str, text_loc: TextLocation) -> NoReturn:
     raise ParseError._create(msg, text_loc)  # pyright: ignore[reportPrivateUsage]
 
 
-# Variable/label dictionary type.
-SymbolsT = Dict[str, Union[int, float]]
+# Variables dictionary type (for type hints).
+VariablesT = Dict[str, Union[int, float]]
+
+
+# Labels dictionary type (for type hints).
+LabelsT = Dict[str, int]
 
 
 # Python name pattern.
@@ -406,7 +402,7 @@ _py_name_pat = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 class _Parser:
     # Builds a parser to parse the Normand input `normand`, parsing
     # immediately.
-    def __init__(self, normand: str, variables: SymbolsT, labels: SymbolsT):
+    def __init__(self, normand: str, variables: VariablesT, labels: LabelsT):
         self._normand = normand
         self._at = 0
         self._line_no = 1
@@ -423,7 +419,7 @@ class _Parser:
     # Current text location.
     @property
     def _text_loc(self):
-        return TextLoc._create(  # pyright: ignore[reportPrivateUsage]
+        return TextLocation._create(  # pyright: ignore[reportPrivateUsage]
             self._line_no, self._col_no
         )
 
@@ -485,7 +481,7 @@ class _Parser:
 
     # Pattern for _skip_ws_and_comments()
     _ws_or_syms_or_comments_pat = re.compile(
-        r"(?:[\s!/\\?&:;.,+[\]_=|-]|#[^#]*?(?:\n|#))*"
+        r"(?:[\s/\\?&:;.,+[\]_=|-]|#[^#]*?(?:\n|#))*"
     )
 
     # Skips as many whitespaces, insignificant symbol characters, and
@@ -672,7 +668,7 @@ class _Parser:
 
     # Returns a stripped expression string and an AST expression node
     # from the expression string `expr_str` at text location `text_loc`.
-    def _ast_expr_from_str(self, expr_str: str, text_loc: TextLoc):
+    def _ast_expr_from_str(self, expr_str: str, text_loc: TextLocation):
         # Create an expression node from the expression string
         expr_str = expr_str.strip().replace("\n", " ")
 
@@ -828,7 +824,7 @@ class _Parser:
         self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
         return item
 
-    # Pattern for _try_parse_set_offset_val() and _try_parse_rep()
+    # Common positive constant integer pattern
     _pos_const_int_pat = re.compile(r"0[Xx][A-Fa-f0-9]+|\d+")
 
     # Tries to parse an offset setting value (after the initial `<`),
@@ -956,6 +952,77 @@ class _Parser:
         # Return item
         return _AlignOffset(val, pad_val, begin_text_loc)
 
+    # Patterns for _expect_rep_mul_expr()
+    _rep_expr_prefix_pat = re.compile(r"\{")
+    _rep_expr_pat = re.compile(r"[^}p]+")
+    _rep_expr_suffix_pat = re.compile(r"\}")
+
+    # Parses the multiplier expression of a repetition (block or
+    # post-item) and returns the expression string and AST node.
+    def _expect_rep_mul_expr(self):
+        expr_text_loc = self._text_loc
+
+        # Constant integer?
+        m = self._try_parse_pat(self._pos_const_int_pat)
+
+        if m is None:
+            # Name?
+            m = self._try_parse_pat(_py_name_pat)
+
+            if m is None:
+                # Expression?
+                if self._try_parse_pat(self._rep_expr_prefix_pat) is None:
+                    # At this point it's invalid
+                    self._raise_error(
+                        "Expecting a positive integral multiplier, a name, or `{`"
+                    )
+
+                # Expect an expression
+                expr_text_loc = self._text_loc
+                m = self._expect_pat(self._rep_expr_pat, "Expecting an expression")
+                expr_str = m.group(0)
+
+                # Expect `}`
+                self._expect_pat(self._rep_expr_suffix_pat, "Expecting `}`")
+            else:
+                expr_str = m.group(0)
+        else:
+            expr_str = m.group(0)
+
+        return self._ast_expr_from_str(expr_str, expr_text_loc)
+
+    # Pattern for _try_parse_rep_block()
+    _rep_block_prefix_pat = re.compile(r"!r(?:epeat)?\b\s*")
+    _rep_block_end_pat = re.compile(r"!end\b\s*")
+
+    # Tries to parse a repetition block, returning a repetition item on
+    # success.
+    def _try_parse_rep_block(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._rep_block_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect expression
+        self._skip_ws_and_comments()
+        expr_str, expr = self._expect_rep_mul_expr()
+
+        # Parse items
+        self._skip_ws_and_comments()
+        items_text_loc = self._text_loc
+        items = self._parse_items()
+
+        # Expect end of block
+        self._skip_ws_and_comments()
+        self._expect_pat(
+            self._rep_block_end_pat, "Expecting an item or `!end` (end of repetition)"
+        )
+
+        # Return item
+        return _Rep(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
+
     # Tries to parse a base item (anything except a repetition),
     # returning it on success.
     def _try_parse_base_item(self):
@@ -995,45 +1062,26 @@ class _Parser:
         if item is not None:
             return item
 
-    # Pattern for _try_parse_rep()
-    _rep_prefix_pat = re.compile(r"\*\s*")
-    _rep_expr_prefix_pat = re.compile(r"\{")
-    _rep_expr_pat = re.compile(r"[^}p]+")
-    _rep_expr_suffix_pat = re.compile(r"\}")
+        # Repetition (block) item?
+        item = self._try_parse_rep_block()
 
-    # Tries to parse a repetition, returning the expression string and
-    # AST expression node on success.
-    def _try_parse_rep(self):
+        if item is not None:
+            return item
+
+    # Pattern for _try_parse_rep_post()
+    _rep_post_prefix_pat = re.compile(r"\*")
+
+    # Tries to parse a post-item repetition, returning the expression
+    # string and AST expression node on success.
+    def _try_parse_rep_post(self):
         # Match prefix
-        if self._try_parse_pat(self._rep_prefix_pat) is None:
+        if self._try_parse_pat(self._rep_post_prefix_pat) is None:
             # No match
             return
 
-        # Expect and return a decimal multiplier
+        # Return expression string and AST expression
         self._skip_ws_and_comments()
-
-        # Integer?
-        m = self._try_parse_pat(self._pos_const_int_pat)
-
-        if m is None:
-            # Expression?
-            if self._try_parse_pat(self._rep_expr_prefix_pat) is None:
-                # At this point it's invalid
-                self._raise_error("Expecting a positive integral multiplier or `{`")
-
-            # Expect an expression
-            expr_str_loc = self._text_loc
-            m = self._expect_pat(self._rep_expr_pat, "Expecting an expression")
-            expr_str = self._ast_expr_from_str(m.group(0), expr_str_loc)
-
-            # Expect `}`
-            self._expect_pat(self._rep_expr_suffix_pat, "Expecting `}`")
-            expr_str = m.group(0)
-        else:
-            expr_str_loc = self._text_loc
-            expr_str = m.group(0)
-
-        return self._ast_expr_from_str(expr_str, expr_str_loc)
+        return self._expect_rep_mul_expr()
 
     # Tries to parse an item, possibly followed by a repetition,
     # returning `True` on success.
@@ -1053,7 +1101,7 @@ class _Parser:
         if isinstance(item, _RepableItem):
             self._skip_ws_and_comments()
             rep_text_loc = self._text_loc
-            rep_ret = self._try_parse_rep()
+            rep_ret = self._try_parse_rep_post()
 
             if rep_ret is not None:
                 item = _Rep(item, rep_ret[0], rep_ret[1], rep_text_loc)
@@ -1104,8 +1152,8 @@ class ParseResult:
     def _create(
         cls,
         data: bytearray,
-        variables: SymbolsT,
-        labels: SymbolsT,
+        variables: VariablesT,
+        labels: LabelsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1119,8 +1167,8 @@ class ParseResult:
     def _init(
         self,
         data: bytearray,
-        variables: SymbolsT,
-        labels: SymbolsT,
+        variables: VariablesT,
+        labels: LabelsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1192,31 +1240,21 @@ class _NodeVisitor(ast.NodeVisitor):
 # Expression validator: validates that all the names within the
 # expression are allowed.
 class _ExprValidator(_NodeVisitor):
-    def __init__(self, item: _ExprItemT, allowed_names: Set[str], icitte_allowed: bool):
+    def __init__(self, item: _ExprItemT, allowed_names: Set[str]):
         super().__init__()
         self._item = item
         self._allowed_names = allowed_names
-        self._icitte_allowed = icitte_allowed
 
     def _visit_name(self, name: str):
         # Make sure the name refers to a known and reachable
         # variable/label name.
-        if name == _icitte_name and not self._icitte_allowed:
-            _raise_error(
-                "Illegal reserved name `{}` in expression `{}`".format(
-                    _icitte_name, self._item.expr_str
-                ),
-                self._item.text_loc,
-            )
-        elif name != _icitte_name and name not in self._allowed_names:
+        if name != _icitte_name and name not in self._allowed_names:
             msg = "Illegal (unknown or unreachable) variable/label name `{}` in expression `{}`".format(
                 name, self._item.expr_str
             )
 
             allowed_names = self._allowed_names.copy()
-
-            if self._icitte_allowed:
-                allowed_names.add(_icitte_name)
+            allowed_names.add(_icitte_name)
 
             if len(allowed_names) > 0:
                 allowed_names_str = ", ".join(
@@ -1248,8 +1286,8 @@ class _ExprNamesVisitor(_NodeVisitor):
 class _GenState:
     def __init__(
         self,
-        variables: SymbolsT,
-        labels: SymbolsT,
+        variables: VariablesT,
+        labels: LabelsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1268,7 +1306,7 @@ class _GenState:
 # The steps of generation are:
 #
 # 1. Validate that each repetition and LEB128 integer expression uses
-#    only reachable names and not `ICITTE`.
+#    only reachable names.
 #
 # 2. Compute and keep the effective repetition count and LEB128 integer
 #    value for each repetition and LEB128 integer instance.
@@ -1289,8 +1327,8 @@ class _Gen:
     def __init__(
         self,
         group: _Group,
-        variables: SymbolsT,
-        labels: SymbolsT,
+        variables: VariablesT,
+        labels: LabelsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
@@ -1386,15 +1424,15 @@ class _Gen:
             elif item.name in allowed_variable_names:
                 allowed_variable_names.remove(item.name)
         elif isinstance(item, _Leb128Int):
-            # Validate the expression (`ICITTE` allowed)
-            _ExprValidator(
-                item, allowed_label_names | allowed_variable_names, True
-            ).visit(item.expr)
+            # Validate the expression
+            _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
+                item.expr
+            )
         elif type(item) is _Rep:
-            # Validate the expression first (`ICITTE` not allowed)
-            _ExprValidator(
-                item, allowed_label_names | allowed_variable_names, False
-            ).visit(item.expr)
+            # Validate the expression first
+            _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
+                item.expr
+            )
 
             # Validate inner item
             _Gen._validate_vl_exprs(
@@ -1413,29 +1451,25 @@ class _Gen:
     # Evaluates the expression of `item` considering the current
     # generation state `state`.
     #
-    # If `allow_icitte` is `True`, then the `ICITTE` name is available
-    # for the expression to evaluate.
-    #
     # If `allow_float` is `True`, then the type of the result may be
     # `float` too.
     @staticmethod
     def _eval_item_expr(
         item: _ExprItemT,
         state: _GenState,
-        allow_icitte: bool,
         allow_float: bool = False,
     ):
-        syms = state.labels.copy()
+        syms = {}  # type: VariablesT
+        syms.update(state.labels)
 
-        # Set the `ICITTE` name to the current offset, if any
-        if allow_icitte:
-            syms[_icitte_name] = state.offset
+        # Set the `ICITTE` name to the current offset
+        syms[_icitte_name] = state.offset
 
         # Add the current variables
         syms.update(state.variables)
 
         # Validate the node and its children
-        _ExprValidator(item, set(syms.keys()), True).visit(item.expr)
+        _ExprValidator(item, set(syms.keys())).visit(item.expr)
 
         # Compile and evaluate expression node
         try:
@@ -1529,16 +1563,14 @@ class _Gen:
 
             if do_eval:
                 # Evaluate the expression and keep the result
-                state.variables[item.name] = _Gen._eval_item_expr(
-                    item, state, True, True
-                )
+                state.variables[item.name] = _Gen._eval_item_expr(item, state, True)
         elif type(item) is _SetOffset:
             state.offset = item.val
         elif type(item) is _AlignOffset:
             state.offset = _Gen._align_offset(state.offset, item)
         elif isinstance(item, _Leb128Int):
             # Evaluate the expression
-            val = _Gen._eval_item_expr(item, state, True)
+            val = _Gen._eval_item_expr(item, state)
 
             # Validate result
             if type(item) is _ULeb128Int and val < 0:
@@ -1557,7 +1589,7 @@ class _Gen:
             state.offset += _Gen._leb128_size_for_val(val, type(item) is _SLeb128Int)
         elif type(item) is _Rep:
             # Evaluate the expression and keep the result
-            val = _Gen._eval_item_expr(item, state, False)
+            val = _Gen._eval_item_expr(item, state)
 
             # Validate result
             if val < 0:
@@ -1669,7 +1701,7 @@ class _Gen:
         self, item: _VarAssign, state: _GenState, next_vl_instance: int
     ):
         # Update variable
-        state.variables[item.name] = self._eval_item_expr(item, state, True, True)
+        state.variables[item.name] = self._eval_item_expr(item, state, True)
         return next_vl_instance
 
     # Handles the fixed-length integer item `item`.
@@ -1732,7 +1764,7 @@ class _Gen:
         self, item: _FlNum, state: _GenState, next_vl_instance: int
     ):
         # Compute value
-        val = self._eval_item_expr(item, state, True, True)
+        val = self._eval_item_expr(item, state, True)
 
         # Validate current byte order
         if state.bo is None and item.len > 8:
@@ -1916,8 +1948,8 @@ class _Gen:
 # Raises `ParseError` on any parsing error.
 def parse(
     normand: str,
-    init_variables: Optional[SymbolsT] = None,
-    init_labels: Optional[SymbolsT] = None,
+    init_variables: Optional[VariablesT] = None,
+    init_labels: Optional[LabelsT] = None,
     init_offset: int = 0,
     init_byte_order: Optional[ByteOrder] = None,
 ):
@@ -1997,7 +2029,7 @@ def _raise_cli_error(msg: str) -> NoReturn:
 # Returns a dictionary of string to integers from the list of strings
 # `args` containing `NAME=VAL` entries.
 def _dict_from_arg(args: Optional[List[str]]):
-    d = {}  # type: SymbolsT
+    d = {}  # type: LabelsT
 
     if args is None:
         return d
@@ -2028,7 +2060,7 @@ def _try_run_cli():
             normand = f.read()
 
     # Variables and labels
-    variables = _dict_from_arg(args.var)
+    variables = typing.cast(VariablesT, _dict_from_arg(args.var))
     labels = _dict_from_arg(args.label)
 
     # Validate offset

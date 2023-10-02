@@ -1,3 +1,0 @@
-99 * {ICITTE * 2}
----
-1:4 - Illegal reserved name `ICITTE` in expression `ICITTE * 2`

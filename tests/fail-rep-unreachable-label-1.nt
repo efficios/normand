@@ -1,6 +1,0 @@
-<meow>
-aa bb {kilo = 23} cc
-dd * {mix}
-ee <mix>
----
-3:4 - Illegal (unknown or unreachable) variable/label name `mix` in expression `mix`; the legal names are {`kilo`, `meow`}

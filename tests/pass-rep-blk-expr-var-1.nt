@@ -1,7 +1,6 @@
-
 aa bb
 {meow = 3}
-cc dd * {meow}
+cc !repeat meow dd !end
 ee ff
 ---
 aa bb

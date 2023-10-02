@@ -1,0 +1,9 @@
+aa bb cc
+!repeat ICITTE
+  dd
+!end
+ee ff
+---
+aa bb cc
+dd dd dd
+ee ff

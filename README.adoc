@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.7, meaning both the Normand
+WARNING: This version of Normand is 0.8, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -178,6 +178,10 @@ Input:
 +
 ----
 aa bb * 5 cc <zoom> "yeah\0" * {zoom * 3}
+
+!repeat 3
+  ff ee "juice"
+!end
 ----
 +
 Output:
@@ -190,6 +194,8 @@ aa bb bb bb bb bb cc 79  65 61 68 00 79 65 61 68  ┆ •••••••yeah�
 61 68 00 79 65 61 68 00  79 65 61 68 00 79 65 61  ┆ ah•yeah•yeah•yea
 68 00 79 65 61 68 00 79  65 61 68 00 79 65 61 68  ┆ h•yeah•yeah•yeah
 00 79 65 61 68 00 79 65  61 68 00 79 65 61 68 00  ┆ •yeah•yeah•yeah•
+ff ee 6a 75 69 63 65 ff  ee 6a 75 69 63 65 ff ee  ┆ ••juice••juice••
+6a 75 69 63 65                                    ┆ juice
 ----
 
 Alignment::
@@ -363,18 +369,22 @@ This is similar to an assembly label.
 
 * A <<group,group>>, that is, a scoped sequence of items.
 
-Moreover, you can <<repetition,repeat>> any item above, except an offset
-or a label, a given fixed or variable number of times. This is called a
-repetition.
+* A <<repetition-block,repetition block>>.
+
+Moreover, you can repeat many items above a constant or variable number
+of times with the ``pass:[*]`` operator _after_ the item to repeat. This
+is called a <<post-item-repetition,post-item repetition>>.
 
 A Normand comment may exist:
 
 * Between items, possibly within a group.
 * Between the nibbles of a constant hexadecimal byte.
 * Between the bits of a constant binary byte.
-* Between the last item and the ``pass:[*]`` character of a repetition,
-  and between that ``pass:[*]`` character and the following number
-  or expression.
+* Between the last item and the ``pass:[*]`` character of a post-item
+  repetition, and between that ``pass:[*]`` character and the following
+  number or expression.
+* Between the ``!repeat``/``!r`` prefix and the following constant
+  integer, name, or expression of a repetition block.
 
 A comment is anything between two ``pass:[#]`` characters on the same
 line, or from ``pass:[#]`` until the end of the line. Whitespaces and
@@ -382,7 +392,7 @@ the following symbol characters are also considered comments where a
 comment may exist:
 
 ----
-! / \ ? & : ; . , + [ ] _ = | -
+/ \ ? & : ; . , + [ ] _ = | -
 ----
 
 The latter serve to improve readability so that you may write, for
@@ -953,8 +963,8 @@ A _group_ is a scoped sequence of items.
 
 The <<label,labels>> within a group aren't visible outside of it.
 
-The main purpose of a group is to <<repetition,repeat>> more than a
-single item.
+The main purpose of a group is to <<post-item-repetition,repeat>> more
+than a single item and to isolate labels.
 
 A group is:
 
@@ -1020,12 +1030,160 @@ Output:
 ----
 ====
 
-=== Repetition
+=== Repetition block
 
-A _repetition_ represents the bytes of an item repeated a given number
-of times.
+A _repetition block_ represents the bytes of one or more items repeated
+a given number of times.
 
-A repetition is:
+A repetition block is:
+
+. The `!repeat` or `!r` prefix.
+
+. One of:
+
+** A positive integer (hexadecimal starting with `0x` or `0X` accepted)
+   which is the number of times to repeat the previous item.
+
+** The ``pass:[{]`` prefix, a valid {py3} expression, and the
+   ``pass:[}]`` suffix.
++
+For a repetition at some source location{nbsp}__**L**__, this expression
+may contain:
++
+--
+* The name of any <<label,label>> defined before{nbsp}__**L**__.
+* The name of any <<variable-assignment,variable>> known
+  at{nbsp}__**L**__ which doesn't, directly or indirectly, refer to a
+  label defined after{nbsp}__**L**__.
+--
++
+The value of the special name `ICITTE` (`int` type) in this expression
+is the <<cur-offset,current offset>> (before handling the items to
+repeat).
+
+** A valid {py3} name.
++
+For the name `__NAME__`, this is equivalent to the
+`pass:[{]__NAME__pass:[}]` form above.
+
+. Zero or more items.
+
+. The `!end` suffix.
+
+You may also use a <<post-item-repetition,post-item repetition>> after
+some items. The form ``!repeat{nbsp}__X__{nbsp}__ITEMS__{nbsp}!end``
+is equivalent to ``(__ITEMS__){nbsp}pass:[*]{nbsp}__X__``.
+
+====
+Input:
+
+----
+!repeat 0x100
+  {end - ICITTE - 1 : 8}
+!end
+
+<end>
+----
+
+Output:
+
+----
+ff fe fd fc fb fa f9 f8  f7 f6 f5 f4 f3 f2 f1 f0  ┆ ••••••••••••••••
+ef ee ed ec eb ea e9 e8  e7 e6 e5 e4 e3 e2 e1 e0  ┆ ••••••••••••••••
+df de dd dc db da d9 d8  d7 d6 d5 d4 d3 d2 d1 d0  ┆ ••••••••••••••••
+cf ce cd cc cb ca c9 c8  c7 c6 c5 c4 c3 c2 c1 c0  ┆ ••••••••••••••••
+bf be bd bc bb ba b9 b8  b7 b6 b5 b4 b3 b2 b1 b0  ┆ ••••••••••••••••
+af ae ad ac ab aa a9 a8  a7 a6 a5 a4 a3 a2 a1 a0  ┆ ••••••••••••••••
+9f 9e 9d 9c 9b 9a 99 98  97 96 95 94 93 92 91 90  ┆ ••••••••••••••••
+8f 8e 8d 8c 8b 8a 89 88  87 86 85 84 83 82 81 80  ┆ ••••••••••••••••
+7f 7e 7d 7c 7b 7a 79 78  77 76 75 74 73 72 71 70  ┆ •~}|{zyxwvutsrqp
+6f 6e 6d 6c 6b 6a 69 68  67 66 65 64 63 62 61 60  ┆ onmlkjihgfedcba`
+5f 5e 5d 5c 5b 5a 59 58  57 56 55 54 53 52 51 50  ┆ _^]\[ZYXWVUTSRQP
+4f 4e 4d 4c 4b 4a 49 48  47 46 45 44 43 42 41 40  ┆ ONMLKJIHGFEDCBA@
+3f 3e 3d 3c 3b 3a 39 38  37 36 35 34 33 32 31 30  ┆ ?>=<;:9876543210
+2f 2e 2d 2c 2b 2a 29 28  27 26 25 24 23 22 21 20  ┆ /.-,+*)('&%$#"!
+1f 1e 1d 1c 1b 1a 19 18  17 16 15 14 13 12 11 10  ┆ ••••••••••••••••
+0f 0e 0d 0c 0b 0a 09 08  07 06 05 04 03 02 01 00  ┆ ••••••••••••••••
+----
+====
+
+====
+Input:
+
+----
+{times = 1}
+
+aa bb cc dd
+
+!repeat 3
+  <here>
+
+  !repeat {here + 1}
+    ee ff
+  !end
+
+  11 22 !repeat times 33 !end
+
+  {times = times + 1}
+!end
+
+"coucou!"
+----
+
+Output:
+
+----
+aa bb cc dd ee ff ee ff  ee ff ee ff ee ff 11 22  ┆ •••••••••••••••"
+33 ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ 3•••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff 11 22 33  33 ee ff ee ff ee ff ee  ┆ ••••••"33•••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
+ff ee ff ee ff ee ff ee  ff ee ff ee ff 11 22 33  ┆ ••••••••••••••"3
+33 33 63 6f 75 63 6f 75  21                       ┆ 33coucou!
+----
+====
+
+====
+This example shows how to use a repetition block as a conditional
+section depending on some predefined variable.
+
+Input:
+
+----
+aa bb cc dd
+
+!repeat cond
+  ee ff "meow mix" 00
+!end
+
+{be} {-1993:16}
+----
+
+Output (`cond` is 0):
+
+----
+aa bb cc dd f8 37
+----
+
+Output (`cond` is 1):
+
+----
+aa bb cc dd ee ff 6d 65  6f 77 20 6d 69 78 00 f8  ┆ ••••••meow mix••
+37                                                ┆ 7
+----
+====
+
+=== Post-item repetition
+
+A _post-item repetition_ represents the bytes of an item repeated a
+given number of times.
+
+A post-item repetition is:
 
 . Any item except:
 
@@ -1034,6 +1192,7 @@ A repetition is:
 ** A <<label,label>>.
 ** A <<offset-alignment,offset alignment>>.
 ** A <<variable-assignment,variable assignment>>.
+** A <<repetition-block,repetition block>>.
 
 . The ``pass:[*]`` character.
 
@@ -1057,7 +1216,18 @@ may contain:
   after{nbsp}__**L**__.
 --
 +
-This expression must not contain the special name `ICITTE`.
+The value of the special name `ICITTE` (`int` type) in this expression
+is the <<cur-offset,current offset>> (before handling the items to
+repeat).
+
+** A valid {py3} name.
++
+For the name `__NAME__`, this is equivalent to the
+`pass:[{]__NAME__pass:[}]` form above.
+
+You may also use a <<repetition-block,repetition block>>. The form
+``__ITEM__{nbsp}pass:[*]{nbsp}__X__`` is equivalent to
+``!repeat{nbsp}__X__{nbsp}__ITEM__{nbsp}!end``.
 
 ====
 Input:
@@ -1121,32 +1291,6 @@ ff ee ff ee ff ee ff ee  ff ee ff ee ff 11 22 33  ┆ ••••••••�
 ----
 ====
 
-====
-This example shows how to use a repetition as a conditional section
-depending on some predefined variable.
-
-Input:
-
-----
-aa bb cc dd
-(ee ff "meow mix" 00) * {cond}
-{be} {-1993:16}
-----
-
-Output (`cond` is 0):
-
-----
-aa bb cc dd f8 37
-----
-
-Output (`cond` is 1):
-
-----
-aa bb cc dd ee ff 6d 65  6f 77 20 6d 69 78 00 f8  ┆ ••••••meow mix••
-37                                                ┆ 7
-----
-====
-
 == Command-line tool
 
 If you <<install-normand,installed>> the `normand` package, then you
@@ -1184,10 +1328,11 @@ use the `--help` option to learn more.
 
 == {py3} API
 
-The whole `normand` package/module API is:
+The whole `normand` package/module public API is:
 
 [source,python]
 ----
+# Byte order.
 class ByteOrder(enum.Enum):
     # Big endian.
     BE = ...
@@ -1196,7 +1341,8 @@ class ByteOrder(enum.Enum):
     LE = ...
 
 
-class TextLoc:
+# Text location.
+class TextLocation:
     # Line number.
     @property
     def line_no(self) -> int:
@@ -1208,16 +1354,23 @@ class TextLoc:
         ...
 
 
+# Parsing error.
 class ParseError(RuntimeError):
     # Source text location.
     @property
-    def text_loc(self) -> TextLoc:
+    def text_loc(self) -> TextLocation:
         ...
 
 
-SymbolsT = typing.Dict[str, int]
+# Variables dictionary type (for type hints).
+VariablesT = typing.Dict[str, typing.Union[int, float]]
 
 
+# Labels dictionary type (for type hints).
+LabelsT = typing.Dict[str, int]
+
+
+# Parsing result.
 class ParseResult:
     # Generated data.
     @property
@@ -1245,6 +1398,9 @@ class ParseResult:
         ...
 
 
+# Parses the `normand` input using the initial state defined by
+# `init_variables`, `init_labels`, `init_offset`, and `init_byte_order`,
+# and returns the corresponding parsing result.
 def parse(normand: str,
           init_variables: typing.Optional[SymbolsT] = None,
           init_labels: typing.Optional[SymbolsT] = None,

@@ -1,0 +1,18 @@
+!repeat 10
+  <beg>
+  aa bb cc dd
+  <end>
+  {include = int(beg >= 4 * (end - beg))}
+  !repeat include 11 22 33 44 !end
+!end
+---
+aa bb cc dd
+aa bb cc dd
+aa bb cc dd
+aa bb cc dd
+aa bb cc dd 11 22 33 44
+aa bb cc dd 11 22 33 44
+aa bb cc dd 11 22 33 44
+aa bb cc dd 11 22 33 44
+aa bb cc dd 11 22 33 44
+aa bb cc dd 11 22 33 44

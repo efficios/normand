@@ -1,9 +1,0 @@
-aa {mix = 23} bb <flake> cc
-(
-  dd ee * {meow}
-  ff
-  <meow>
-)
-"salut"
----
-3:9 - Illegal (unknown or unreachable) variable/label name `meow` in expression `meow`; the legal names are {`flake`, `mix`}

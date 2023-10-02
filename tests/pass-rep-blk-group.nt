@@ -1,0 +1,51 @@
+aa
+!repeat 0xa
+  bb cc
+  !repeat 3
+    dd ee
+  !end
+!end
+ff
+---
+aa
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+  bb cc
+    dd ee
+    dd ee
+    dd ee
+ff

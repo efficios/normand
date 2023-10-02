@@ -1,0 +1,3 @@
+aa {meow = 5} dd bb * meow cc
+---
+aa dd bb bb bb bb bb cc
