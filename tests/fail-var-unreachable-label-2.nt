@@ -1,0 +1,10 @@
+aa bb cc
+
+!repeat 3
+  {meow = mix}
+  55 ff
+!end
+
+<mix>
+---
+4:4 - Illegal (unknown or unreachable) variable/label name `mix` in expression `mix`; the legal names are {`ICITTE`}

@@ -1,6 +1,9 @@
-<meow>
-aa {kilo = 99} bb {kilo = mix} cc
-{kilo : uleb128}
-ee <mix>
+aa {mix = 23} bb <flake> cc
+(
+  dd {meow : uleb128}
+  ff
+  <meow>
+)
+"salut"
 ---
-3:2 - Illegal (unknown or unreachable) variable/label name `kilo` in expression `kilo`; the legal names are {`ICITTE`, `meow`}
+3:7 - Illegal (unknown or unreachable) variable/label name `meow` in expression `meow`; the legal names are {`ICITTE`, `flake`, `mix`}

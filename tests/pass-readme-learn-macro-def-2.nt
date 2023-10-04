@@ -1,0 +1,17 @@
+!macro nail(rep, with_extra, val)
+  {iter = 1}
+
+  !repeat rep
+    {val + iter : uleb128}
+    {0xdeadbeef : 32}
+    {iter = iter + 1}
+  !end
+
+  !if with_extra
+    "meow mix\0"
+  !end
+!end
+
+ff
+---
+ff

@@ -1,0 +1,8 @@
+!m butter(val)
+  {milk = val * 2}
+  {be} {milk : 8}
+!end
+
+m:butter(0x23) m:butter(0x42)
+---
+46 84

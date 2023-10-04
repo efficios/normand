@@ -1,0 +1,21 @@
+!macro hello(world)
+  "hello"
+  !if world " world" !end
+!end
+
+!repeat 17
+  ff ff ff ff
+  m:hello({ICITTE > 15 and ICITTE < 60})
+!end
+---
+ff ff ff ff 68 65 6c 6c 6f ff ff ff ff 68 65 6c
+6c 6f ff ff ff ff 68 65 6c 6c 6f 20 77 6f 72 6c
+64 ff ff ff ff 68 65 6c 6c 6f 20 77 6f 72 6c 64
+ff ff ff ff 68 65 6c 6c 6f 20 77 6f 72 6c 64 ff
+ff ff ff 68 65 6c 6c 6f ff ff ff ff 68 65 6c 6c
+6f ff ff ff ff 68 65 6c 6c 6f ff ff ff ff 68 65
+6c 6c 6f ff ff ff ff 68 65 6c 6c 6f ff ff ff ff
+68 65 6c 6c 6f ff ff ff ff 68 65 6c 6c 6f ff ff
+ff ff 68 65 6c 6c 6f ff ff ff ff 68 65 6c 6c 6f
+ff ff ff ff 68 65 6c 6c 6f ff ff ff ff 68 65 6c
+6c 6f ff ff ff ff 68 65 6c 6c 6f

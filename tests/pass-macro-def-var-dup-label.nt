@@ -1,0 +1,9 @@
+<yeah>
+
+!macro salut(zoom)
+  11 22 {yeah = 17} 33 44
+!end
+
+aa
+---
+aa

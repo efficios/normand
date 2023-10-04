@@ -1,0 +1,7 @@
+!macro salut(a, b, c)
+  "meow" 23 42
+!end
+
+aa bb m:salut(42, 0x23)
+---
+5:15 - Macro expansion passes 2 parameters while the definition expects 3

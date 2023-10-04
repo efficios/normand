@@ -1,0 +1,9 @@
+!m s()
+  aa bb cc <0x100> dd
+!end
+
+11 m:s() {ICITTE:8}
+---
+11
+aa bb cc dd
+05

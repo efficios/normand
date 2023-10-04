@@ -1,0 +1,11 @@
+!macro meow()
+  11 <salut> 22
+!end
+
+!macro mix()
+  11 <salut> 22
+!end
+
+aa
+---
+aa

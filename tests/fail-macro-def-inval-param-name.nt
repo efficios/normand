@@ -1,0 +1,5 @@
+!macro salut(a, meow-mix, b)
+  "meow" 23 42
+!end
+---
+1:21 - Expecting `,`

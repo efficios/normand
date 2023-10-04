@@ -1,0 +1,5 @@
+!macro (a, b, c)
+  "meow" 23 42
+!end
+---
+1:8 - Expecting a valid macro name

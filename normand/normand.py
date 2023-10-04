@@ -30,23 +30,24 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 __all__ = [
+    "__author__",
+    "__version__",
     "ByteOrder",
+    "LabelsT",
     "parse",
     "ParseError",
     "ParseResult",
     "TextLocation",
-    "LabelsT",
     "VariablesT",
-    "__author__",
-    "__version__",
 ]
 
 import re
 import abc
 import ast
 import sys
+import copy
 import enum
 import math
 import struct
@@ -376,8 +377,96 @@ class _Cond(_Item, _ExprMixin):
         )
 
 
-# Expression item type.
-_ExprItemT = Union[_FlNum, _Leb128Int, _VarAssign, _Rep, _Cond]
+# Macro definition item.
+class _MacroDef(_Item):
+    def __init__(
+        self, name: str, param_names: List[str], group: _Group, text_loc: TextLocation
+    ):
+        super().__init__(text_loc)
+        self._name = name
+        self._param_names = param_names
+        self._group = group
+
+    # Name.
+    @property
+    def name(self):
+        return self._name
+
+    # Parameters.
+    @property
+    def param_names(self):
+        return self._param_names
+
+    # Contained items.
+    @property
+    def group(self):
+        return self._group
+
+    def __repr__(self):
+        return "_MacroDef({}, {}, {}, {})".format(
+            repr(self._name),
+            repr(self._param_names),
+            repr(self._group),
+            repr(self._text_loc),
+        )
+
+
+# Macro expansion parameter.
+class _MacroExpParam:
+    def __init__(self, expr_str: str, expr: ast.Expression, text_loc: TextLocation):
+        self._expr_str = expr_str
+        self._expr = expr
+        self._text_loc = text_loc
+
+    # Expression string.
+    @property
+    def expr_str(self):
+        return self._expr_str
+
+    # Expression.
+    @property
+    def expr(self):
+        return self._expr
+
+    # Source text location.
+    @property
+    def text_loc(self):
+        return self._text_loc
+
+    def __repr__(self):
+        return "_MacroExpParam({}, {}, {})".format(
+            repr(self._expr_str), repr(self._expr), repr(self._text_loc)
+        )
+
+
+# Macro expansion item.
+class _MacroExp(_Item, _RepableItem):
+    def __init__(
+        self,
+        name: str,
+        params: List[_MacroExpParam],
+        text_loc: TextLocation,
+    ):
+        super().__init__(text_loc)
+        self._name = name
+        self._params = params
+
+    # Name.
+    @property
+    def name(self):
+        return self._name
+
+    # Parameters.
+    @property
+    def params(self):
+        return self._params
+
+    def __repr__(self):
+        return "_MacroExp({}, {}, {})".format(
+            repr(self._name),
+            repr(self._params),
+            repr(self._text_loc),
+        )
 
 
 # A parsing error containing a message and a text location.
@@ -418,6 +507,10 @@ LabelsT = Dict[str, int]
 _py_name_pat = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
 
 
+# Macro definition dictionary.
+_MacroDefsT = Dict[str, _MacroDef]
+
+
 # Normand parser.
 #
 # The constructor accepts a Normand input. After building, use the `res`
@@ -432,12 +525,18 @@ class _Parser:
         self._col_no = 1
         self._label_names = set(labels.keys())
         self._var_names = set(variables.keys())
+        self._macro_defs = {}  # type: _MacroDefsT
         self._parse()
 
     # Result (main group).
     @property
     def res(self):
         return self._res
+
+    # Macro definitions.
+    @property
+    def macro_defs(self):
+        return self._macro_defs
 
     # Current text location.
     @property
@@ -512,6 +611,13 @@ class _Parser:
     def _skip_ws_and_comments(self):
         self._try_parse_pat(self._ws_or_syms_or_comments_pat)
 
+    # Pattern for _skip_ws()
+    _ws_pat = re.compile(r"\s*")
+
+    # Skips as many whitespaces as possible.
+    def _skip_ws(self):
+        self._try_parse_pat(self._ws_pat)
+
     # Pattern for _try_parse_hex_byte()
     _nibble_pat = re.compile(r"[A-Fa-f0-9]")
 
@@ -561,7 +667,7 @@ class _Parser:
         return _Byte(int("".join(bits), 2), begin_text_loc)
 
     # Patterns for _try_parse_dec_byte()
-    _dec_byte_prefix_pat = re.compile(r"\$\s*")
+    _dec_byte_prefix_pat = re.compile(r"\$")
     _dec_byte_val_pat = re.compile(r"(?P<neg>-?)(?P<val>\d+)")
 
     # Tries to parse a decimal byte, returning a byte item on success.
@@ -574,6 +680,7 @@ class _Parser:
             return
 
         # Expect the value
+        self._skip_ws()
         m = self._expect_pat(self._dec_byte_val_pat, "Expecting a decimal constant")
 
         # Compute value
@@ -664,9 +771,11 @@ class _Parser:
         # Return item
         return _Str(data, begin_text_loc)
 
+    # Common right parenthesis pattern
+    _right_paren_pat = re.compile(r"\)")
+
     # Patterns for _try_parse_group()
-    _group_prefix_pat = re.compile(r"\(|!g(roup)?\b")
-    _group_suffix_paren_pat = re.compile(r"\)")
+    _group_prefix_pat = re.compile(r"\(|!g(?:roup)?\b")
 
     # Tries to parse a group, returning a group item on success.
     def _try_parse_group(self):
@@ -686,7 +795,7 @@ class _Parser:
         self._skip_ws_and_comments()
 
         if m_open.group(0) == "(":
-            pat = self._group_suffix_paren_pat
+            pat = self._right_paren_pat
             exp = ")"
         else:
             pat = self._block_end_pat
@@ -758,10 +867,9 @@ class _Parser:
                 begin_text_loc,
             )
 
-    # Patterns for _try_parse_num_and_attr()
-    _var_assign_pat = re.compile(
-        r"(?P<name>{})\s*=\s*(?P<expr>[^}}]+)".format(_py_name_pat.pattern)
-    )
+    # Patterns for _try_parse_var_assign()
+    _var_assign_name_equal_pat = re.compile(r"({})\s*=".format(_py_name_pat.pattern))
+    _var_assign_expr_pat = re.compile(r"[^}]+")
 
     # Tries to parse a variable assignment, returning a variable
     # assignment item on success.
@@ -769,14 +877,14 @@ class _Parser:
         begin_text_loc = self._text_loc
 
         # Match
-        m = self._try_parse_pat(self._var_assign_pat)
+        m = self._try_parse_pat(self._var_assign_name_equal_pat)
 
         if m is None:
             # No match
             return
 
         # Validate name
-        name = m.group("name")
+        name = m.group(1)
 
         if name == _icitte_name:
             _raise_error(
@@ -786,11 +894,15 @@ class _Parser:
         if name in self._label_names:
             _raise_error("Existing label named `{}`".format(name), begin_text_loc)
 
-        # Add to known variable names
-        self._var_names.add(name)
+        # Expect an expression
+        self._skip_ws()
+        m = self._expect_pat(self._var_assign_expr_pat, "Expecting an expression")
 
         # Create an expression node from the expression string
-        expr_str, expr = self._ast_expr_from_str(m.group("expr"), begin_text_loc)
+        expr_str, expr = self._ast_expr_from_str(m.group(0), begin_text_loc)
+
+        # Add to known variable names
+        self._var_names.add(name)
 
         # Return item
         return _VarAssign(
@@ -823,8 +935,8 @@ class _Parser:
             return _SetBo(ByteOrder.LE, begin_text_loc)
 
     # Patterns for _try_parse_val_or_bo()
-    _val_var_assign_set_bo_prefix_pat = re.compile(r"\{\s*")
-    _val_var_assign_set_bo_suffix_pat = re.compile(r"\s*}")
+    _val_var_assign_set_bo_prefix_pat = re.compile(r"\{")
+    _val_var_assign_set_bo_suffix_pat = re.compile(r"\}")
 
     # Tries to parse a value, a variable assignment, or a byte order
     # setting, returning an item on success.
@@ -833,6 +945,8 @@ class _Parser:
         if self._try_parse_pat(self._val_var_assign_set_bo_prefix_pat) is None:
             # No match
             return
+
+        self._skip_ws()
 
         # Variable assignment item?
         item = self._try_parse_var_assign()
@@ -852,11 +966,13 @@ class _Parser:
                     )
 
         # Expect suffix
+        self._skip_ws()
         self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
         return item
 
-    # Common positive constant integer pattern
+    # Common constant integer patterns
     _pos_const_int_pat = re.compile(r"0[Xx][A-Fa-f0-9]+|\d+")
+    _const_int_pat = re.compile(r"(?P<neg>-)?(?:{})".format(_pos_const_int_pat.pattern))
 
     # Tries to parse an offset setting value (after the initial `<`),
     # returning an offset item on success.
@@ -906,8 +1022,8 @@ class _Parser:
         return _Label(name, begin_text_loc)
 
     # Patterns for _try_parse_label_or_set_offset()
-    _label_set_offset_prefix_pat = re.compile(r"<\s*")
-    _label_set_offset_suffix_pat = re.compile(r"\s*>")
+    _label_set_offset_prefix_pat = re.compile(r"<")
+    _label_set_offset_suffix_pat = re.compile(r">")
 
     # Tries to parse a label or an offset setting, returning an item on
     # success.
@@ -918,6 +1034,7 @@ class _Parser:
             return
 
         # Offset setting item?
+        self._skip_ws()
         item = self._try_parse_set_offset_val()
 
         if item is None:
@@ -929,13 +1046,14 @@ class _Parser:
                 self._raise_error("Expecting a label name or an offset setting value")
 
         # Expect suffix
+        self._skip_ws()
         self._expect_pat(self._label_set_offset_suffix_pat, "Expecting `>`")
         return item
 
     # Patterns for _try_parse_align_offset()
-    _align_offset_prefix_pat = re.compile(r"@\s*")
-    _align_offset_val_pat = re.compile(r"(\d+)\s*")
-    _align_offset_pad_val_prefix_pat = re.compile(r"~\s*")
+    _align_offset_prefix_pat = re.compile(r"@")
+    _align_offset_val_pat = re.compile(r"\d+")
+    _align_offset_pad_val_prefix_pat = re.compile(r"~")
 
     # Tries to parse an offset alignment, returning an offset alignment
     # item on success.
@@ -947,6 +1065,9 @@ class _Parser:
             # No match
             return
 
+        self._skip_ws()
+
+        # Expect an alignment
         align_text_loc = self._text_loc
         m = self._expect_pat(
             self._align_offset_val_pat,
@@ -954,7 +1075,7 @@ class _Parser:
         )
 
         # Validate alignment
-        val = int(m.group(1))
+        val = int(m.group(0))
 
         if val <= 0 or (val % 8) != 0:
             _raise_error(
@@ -965,9 +1086,11 @@ class _Parser:
             )
 
         # Padding value?
+        self._skip_ws()
         pad_val = 0
 
         if self._try_parse_pat(self._align_offset_pad_val_prefix_pat) is not None:
+            self._skip_ws()
             pad_val_text_loc = self._text_loc
             m = self._expect_pat(self._pos_const_int_pat, "Expecting a byte value")
 
@@ -984,21 +1107,23 @@ class _Parser:
         return _AlignOffset(val, pad_val, begin_text_loc)
 
     # Patterns for _expect_rep_mul_expr()
-    _rep_cond_expr_prefix_pat = re.compile(r"\{")
-    _rep_cond_expr_pat = re.compile(r"[^}]+")
-    _rep_cond_expr_suffix_pat = re.compile(r"\}")
+    _inner_expr_prefix_pat = re.compile(r"\{")
+    _inner_expr_pat = re.compile(r"[^}]+")
+    _inner_expr_suffix_pat = re.compile(r"\}")
 
-    # Parses the expression of a conditional block or of a repetition
-    # (block or post-item) and returns the expression string and AST
-    # node.
-    def _expect_rep_cond_expr(self, accept_int: bool):
+    # Parses a constant integer if `accept_const_int` is `True`
+    # (possibly negative if `allow_neg` is `True`), a name, or an
+    # expression within `{` and `}`.
+    def _expect_const_int_name_expr(
+        self, accept_const_int: bool, allow_neg: bool = False
+    ):
         expr_text_loc = self._text_loc
 
         # Constant integer?
         m = None
 
-        if accept_int:
-            m = self._try_parse_pat(self._pos_const_int_pat)
+        if accept_const_int:
+            m = self._try_parse_pat(self._const_int_pat)
 
         if m is None:
             # Name?
@@ -1006,9 +1131,13 @@ class _Parser:
 
             if m is None:
                 # Expression?
-                if self._try_parse_pat(self._rep_cond_expr_prefix_pat) is None:
-                    if accept_int:
-                        mid_msg = "a positive constant integer, a name, or `{`"
+                if self._try_parse_pat(self._inner_expr_prefix_pat) is None:
+                    pos_msg = "" if allow_neg else "positive "
+
+                    if accept_const_int:
+                        mid_msg = "a {}constant integer, a name, or `{{`".format(
+                            pos_msg
+                        )
                     else:
                         mid_msg = "a name or `{`"
 
@@ -1016,15 +1145,20 @@ class _Parser:
                     self._raise_error("Expecting {}".format(mid_msg))
 
                 # Expect an expression
+                self._skip_ws()
                 expr_text_loc = self._text_loc
-                m = self._expect_pat(self._rep_cond_expr_pat, "Expecting an expression")
+                m = self._expect_pat(self._inner_expr_pat, "Expecting an expression")
                 expr_str = m.group(0)
 
                 # Expect `}`
-                self._expect_pat(self._rep_cond_expr_suffix_pat, "Expecting `}`")
+                self._skip_ws()
+                self._expect_pat(self._inner_expr_suffix_pat, "Expecting `}`")
             else:
                 expr_str = m.group(0)
         else:
+            if m.group("neg") == "-" and not allow_neg:
+                _raise_error("Expecting a positive constant integer", expr_text_loc)
+
             expr_str = m.group(0)
 
         return self._ast_expr_from_str(expr_str, expr_text_loc)
@@ -1032,13 +1166,13 @@ class _Parser:
     # Parses the multiplier expression of a repetition (block or
     # post-item) and returns the expression string and AST node.
     def _expect_rep_mul_expr(self):
-        return self._expect_rep_cond_expr(True)
+        return self._expect_const_int_name_expr(True)
 
     # Common block end pattern
-    _block_end_pat = re.compile(r"!end\b\s*")
+    _block_end_pat = re.compile(r"!end\b")
 
     # Pattern for _try_parse_rep_block()
-    _rep_block_prefix_pat = re.compile(r"!r(?:epeat)?\b\s*")
+    _rep_block_prefix_pat = re.compile(r"!r(?:epeat)?\b")
 
     # Tries to parse a repetition block, returning a repetition item on
     # success.
@@ -1069,7 +1203,7 @@ class _Parser:
         return _Rep(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
 
     # Pattern for _try_parse_cond_block()
-    _cond_block_prefix_pat = re.compile(r"!if\b\s*")
+    _cond_block_prefix_pat = re.compile(r"!if\b")
 
     # Tries to parse a conditional block, returning a conditional item
     # on success.
@@ -1083,7 +1217,7 @@ class _Parser:
 
         # Expect expression
         self._skip_ws_and_comments()
-        expr_str, expr = self._expect_rep_cond_expr(False)
+        expr_str, expr = self._expect_const_int_name_expr(False)
 
         # Parse items
         self._skip_ws_and_comments()
@@ -1099,6 +1233,166 @@ class _Parser:
 
         # Return item
         return _Cond(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
+
+    # Common left parenthesis pattern
+    _left_paren_pat = re.compile(r"\(")
+
+    # Patterns for _try_parse_macro_def() and _try_parse_macro_exp()
+    _macro_params_comma_pat = re.compile(",")
+
+    # Patterns for _try_parse_macro_def()
+    _macro_def_prefix_pat = re.compile(r"!m(?:acro)?\b")
+
+    # Tries to parse a macro definition, adding it to `self._macro_defs`
+    # and returning `True` on success.
+    def _try_parse_macro_def(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._macro_def_prefix_pat) is None:
+            # No match
+            return False
+
+        # Expect a name
+        self._skip_ws()
+        name_text_loc = self._text_loc
+        m = self._expect_pat(_py_name_pat, "Expecting a valid macro name")
+
+        # Validate name
+        name = m.group(0)
+
+        if name in self._macro_defs:
+            _raise_error("Duplicate macro named `{}`".format(name), name_text_loc)
+
+        # Expect `(`
+        self._skip_ws()
+        self._expect_pat(self._left_paren_pat, "Expecting `(`")
+
+        # Try to parse comma-separated parameter names
+        param_names = []  # type: List[str]
+        expect_comma = False
+
+        while True:
+            self._skip_ws()
+
+            # End?
+            if self._try_parse_pat(self._right_paren_pat) is not None:
+                # End
+                break
+
+            # Comma?
+            if expect_comma:
+                self._expect_pat(self._macro_params_comma_pat, "Expecting `,`")
+
+            # Expect parameter name
+            self._skip_ws()
+            param_text_loc = self._text_loc
+            m = self._expect_pat(_py_name_pat, "Expecting valid parameter name")
+
+            if m.group(0) in param_names:
+                _raise_error(
+                    "Duplicate macro parameter named `{}`".format(m.group(0)),
+                    param_text_loc,
+                )
+
+            param_names.append(m.group(0))
+            expect_comma = True
+
+        # Expect items
+        self._skip_ws_and_comments()
+        items_text_loc = self._text_loc
+        old_var_names = self._var_names.copy()
+        old_label_names = self._label_names.copy()
+        self._var_names = set()  # type: Set[str]
+        self._label_names = set()  # type: Set[str]
+        items = self._parse_items()
+        self._var_names = old_var_names
+        self._label_names = old_label_names
+
+        # Expect suffix
+        self._expect_pat(
+            self._block_end_pat, "Expecting an item or `!end` (end of macro block)"
+        )
+
+        # Register macro
+        self._macro_defs[name] = _MacroDef(
+            name, param_names, _Group(items, items_text_loc), begin_text_loc
+        )
+
+        return True
+
+    # Patterns for _try_parse_macro_exp()
+    _macro_exp_prefix_pat = re.compile(r"m\b")
+    _macro_exp_colon_pat = re.compile(r":")
+
+    # Tries to parse a macro expansion, returning a macro expansion item
+    # on success.
+    def _try_parse_macro_exp(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._macro_exp_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect `:`
+        self._skip_ws()
+        self._expect_pat(self._macro_exp_colon_pat, "Expecting `:`")
+
+        # Expect a macro name
+        self._skip_ws()
+        name_text_loc = self._text_loc
+        m = self._expect_pat(_py_name_pat, "Expecting a valid macro name")
+
+        # Validate name
+        name = m.group(0)
+        macro_def = self._macro_defs.get(name)
+
+        if macro_def is None:
+            _raise_error("Unknown macro name `{}`".format(name), name_text_loc)
+
+        # Expect `(`
+        self._skip_ws()
+        self._expect_pat(self._left_paren_pat, "Expecting `(`")
+
+        # Try to parse comma-separated parameter values
+        params_text_loc = self._text_loc
+        params = []  # type: List[_MacroExpParam]
+        expect_comma = False
+
+        while True:
+            self._skip_ws()
+
+            # End?
+            if self._try_parse_pat(self._right_paren_pat) is not None:
+                # End
+                break
+
+            # Expect a Value
+            if expect_comma:
+                self._expect_pat(self._macro_params_comma_pat, "Expecting `,`")
+
+            self._skip_ws()
+            param_text_loc = self._text_loc
+            params.append(
+                _MacroExpParam(
+                    *self._expect_const_int_name_expr(True, True), param_text_loc
+                )
+            )
+            expect_comma = True
+
+        # Validate parameter values
+        if len(params) != len(macro_def.param_names):
+            sing_plur = "" if len(params) == 1 else "s"
+            _raise_error(
+                "Macro expansion passes {} parameter{} while the definition expects {}".format(
+                    len(params), sing_plur, len(macro_def.param_names)
+                ),
+                params_text_loc,
+            )
+
+        # Return item
+        return _MacroExp(name, params, begin_text_loc)
 
     # Tries to parse a base item (anything except a repetition),
     # returning it on success.
@@ -1139,7 +1433,7 @@ class _Parser:
         if item is not None:
             return item
 
-        # Repetition (block) item?
+        # Repetition block item?
         item = self._try_parse_rep_block()
 
         if item is not None:
@@ -1147,6 +1441,12 @@ class _Parser:
 
         # Conditional block item?
         item = self._try_parse_cond_block()
+
+        if item is not None:
+            return item
+
+        # Macro expansion?
+        item = self._try_parse_macro_exp()
 
         if item is not None:
             return item
@@ -1173,12 +1473,11 @@ class _Parser:
     def _try_append_item(self, items: List[_Item]):
         self._skip_ws_and_comments()
 
-        # Parse a base item
+        # Base item
         item = self._try_parse_base_item()
 
         if item is None:
-            # No item
-            return False
+            return
 
         # Parse repetition if the base item is repeatable
         if isinstance(item, _RepableItem):
@@ -1187,7 +1486,7 @@ class _Parser:
             rep_ret = self._try_parse_rep_post()
 
             if rep_ret is not None:
-                item = _Rep(item, rep_ret[0], rep_ret[1], rep_text_loc)
+                item = _Rep(item, *rep_ret, rep_text_loc)
 
         items.append(item)
         return True
@@ -1195,12 +1494,18 @@ class _Parser:
     # Parses and returns items, skipping whitespaces, insignificant
     # symbols, and comments when allowed, and stopping at the first
     # unknown character.
-    def _parse_items(self) -> List[_Item]:
+    #
+    # Accepts and registers macro definitions if `accept_macro_defs`
+    # is `True`.
+    def _parse_items(self, accept_macro_defs: bool = False) -> List[_Item]:
         items = []  # type: List[_Item]
 
         while self._isnt_done():
             # Try to append item
             if not self._try_append_item(items):
+                if accept_macro_defs and self._try_parse_macro_def():
+                    continue
+
                 # Unknown at this point
                 break
 
@@ -1215,7 +1520,7 @@ class _Parser:
             return
 
         # Parse first level items
-        items = self._parse_items()
+        items = self._parse_items(True)
 
         # Make sure there's nothing left
         self._skip_ws_and_comments()
@@ -1323,9 +1628,10 @@ class _NodeVisitor(ast.NodeVisitor):
 # Expression validator: validates that all the names within the
 # expression are allowed.
 class _ExprValidator(_NodeVisitor):
-    def __init__(self, item: _ExprItemT, allowed_names: Set[str]):
+    def __init__(self, expr_str: str, text_loc: TextLocation, allowed_names: Set[str]):
         super().__init__()
-        self._item = item
+        self._expr_str = expr_str
+        self._text_loc = text_loc
         self._allowed_names = allowed_names
 
     def _visit_name(self, name: str):
@@ -1333,7 +1639,7 @@ class _ExprValidator(_NodeVisitor):
         # variable/label name.
         if name != _icitte_name and name not in self._allowed_names:
             msg = "Illegal (unknown or unreachable) variable/label name `{}` in expression `{}`".format(
-                name, self._item.expr_str
+                name, self._expr_str
             )
 
             allowed_names = self._allowed_names.copy()
@@ -1347,22 +1653,8 @@ class _ExprValidator(_NodeVisitor):
 
             _raise_error(
                 msg,
-                self._item.text_loc,
+                self._text_loc,
             )
-
-
-# Expression visitor getting all the contained names.
-class _ExprNamesVisitor(_NodeVisitor):
-    def __init__(self):
-        self._parent_is_call = False
-        self._names = set()  # type: Set[str]
-
-    @property
-    def names(self):
-        return self._names
-
-    def _visit_name(self, name: str):
-        self._names.add(name)
 
 
 # Generator state.
@@ -1379,6 +1671,31 @@ class _GenState:
         self.offset = offset
         self.bo = bo
 
+    def __repr__(self):
+        return "_GenState({}, {}, {}, {})".format(
+            repr(self.variables), repr(self.labels), repr(self.offset), repr(self.bo)
+        )
+
+
+# Fixed-length number item instance.
+class _FlNumItemInst:
+    def __init__(self, item: _FlNum, offset_in_data: int, state: _GenState):
+        self._item = item
+        self._offset_in_data = offset_in_data
+        self._state = state
+
+    @property
+    def item(self):
+        return self._item
+
+    @property
+    def offset_in_data(self):
+        return self._offset_in_data
+
+    @property
+    def state(self):
+        return self._state
+
 
 # Generator of data and final state from a group item.
 #
@@ -1388,38 +1705,45 @@ class _GenState:
 #
 # The steps of generation are:
 #
-# 1. Validate that each repetition, conditional, and LEB128 integer
-#    expression uses only reachable names.
+# 1. Handle each item in prefix order.
 #
-# 2. Compute and keep the effective repetition count, conditional value,
-#    and LEB128 integer value for each repetition and LEB128 integer
-#    instance.
+#    The handlers append bytes to `self._data` and update some current
+#    state object (`_GenState` instance).
 #
-# 3. Generate bytes, updating the initial state as it goes which becomes
-#    the final state after the operation.
+#    When handling a fixed-length number item, try to evaluate its
+#    expression using the current state. If this fails, then it might be
+#    because the expression refers to a "future" label: save the current
+#    offset in `self._data` (generated data) and a snapshot of the
+#    current state within `self._fl_num_item_insts` (`_FlNumItemInst`
+#    object). _gen_fl_num_item_insts() will deal with this later.
 #
-#    During the generation, when handling a `_Rep`, `_Cond`, or
-#    `_Leb128Int` item, we already have the effective repetition count,
-#    conditional value, or value of the instance.
+#    When handling the items of a group, keep a map of immediate label
+#    names to their offset. Then, after having processed all the items,
+#    update the relevant saved state snapshots in
+#    `self._fl_num_item_insts` with those immediate label values.
+#    _gen_fl_num_item_insts() will deal with this later.
 #
-#    When handling a `_Group` item, first update the current labels with
-#    all the immediate (not nested) labels, and then handle each
-#    contained item. This gives contained item access to "future" outer
-#    labels. Then remove the immediate labels from the state so that
-#    outer items don't have access to inner labels.
+# 2. Handle all the fixed-length number item instances of which the
+#    expression evaluation failed before.
+#
+#    At this point, `self._fl_num_item_insts` contains everything that's
+#    needed to evaluate the expressions, including the values of
+#    "future" labels from the point of view of some fixed-length number
+#    item instance.
+#
+#    If an evaluation fails at this point, then it's a user error.
 class _Gen:
     def __init__(
         self,
         group: _Group,
+        macro_defs: _MacroDefsT,
         variables: VariablesT,
         labels: LabelsT,
         offset: int,
         bo: Optional[ByteOrder],
     ):
-        self._validate_vl_exprs(group, set(variables.keys()), set(labels.keys()))
-        self._vl_instance_vals = self._compute_vl_instance_vals(
-            group, _GenState(variables, labels, offset, bo)
-        )
+        self._macro_defs = macro_defs
+        self._fl_num_item_insts = []  # type: List[_FlNumItemInst]
         self._gen(group, _GenState(variables, labels, offset, bo))
 
     # Generated bytes.
@@ -1447,99 +1771,17 @@ class _Gen:
     def bo(self):
         return self._final_state.bo
 
-    # Returns the set of used, non-called names within the AST
-    # expression `expr`.
-    @staticmethod
-    def _names_of_expr(expr: ast.Expression):
-        visitor = _ExprNamesVisitor()
-        visitor.visit(expr)
-        return visitor.names
-
-    # Validates that all the repetition, conditional, and LEB128 integer
-    # expressions within `group` don't refer, directly or indirectly, to
-    # subsequent labels.
-    #
-    # The strategy here is to keep a set of allowed label names, per
-    # group, initialized to `allowed_label_names`, and a set of allowed
-    # variable names initialized to `allowed_variable_names`.
-    #
-    # Then, depending on the type of `item`:
-    #
-    # `_Label`:
-    #     Add its name to the local allowed label names: a label
-    #     occurring before a repetition, and not within a nested group,
-    #     is always reachable.
-    #
-    # `_VarAssign`:
-    #     If all the names within its expression are allowed, then add
-    #     its name to the allowed variable names.
-    #
-    #     Otherwise, remove its name from the allowed variable names (if
-    #     it's in there): a variable which refers to an unreachable name
-    #     is unreachable itself.
-    #
-    # `_Rep`, `_Cond`, and `_Leb128`:
-    #     Make sure all the names within its expression are allowed.
-    #
-    # `_Group`:
-    #     Call this function for each contained item with a _copy_ of
-    #     the current allowed label names and the same current allowed
-    #     variable names.
-    @staticmethod
-    def _validate_vl_exprs(
-        item: _Item, allowed_variable_names: Set[str], allowed_label_names: Set[str]
-    ):
-        if type(item) is _Label:
-            allowed_label_names.add(item.name)
-        elif type(item) is _VarAssign:
-            # Check if this variable name is allowed
-            allowed = True
-
-            for name in _Gen._names_of_expr(item.expr):
-                if name not in (
-                    allowed_label_names | allowed_variable_names | {_icitte_name}
-                ):
-                    # Not allowed
-                    allowed = False
-                    break
-
-            if allowed:
-                allowed_variable_names.add(item.name)
-            elif item.name in allowed_variable_names:
-                allowed_variable_names.remove(item.name)
-        elif isinstance(item, _Leb128Int):
-            # Validate the expression
-            _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
-                item.expr
-            )
-        elif type(item) is _Rep or type(item) is _Cond:
-            # Validate the expression first
-            _ExprValidator(item, allowed_label_names | allowed_variable_names).visit(
-                item.expr
-            )
-
-            # Validate inner item
-            _Gen._validate_vl_exprs(
-                item.item, allowed_variable_names, allowed_label_names
-            )
-        elif type(item) is _Group:
-            # Copy `allowed_label_names` so that this frame cannot
-            # access the nested label names.
-            group_allowed_label_names = allowed_label_names.copy()
-
-            for subitem in item.items:
-                _Gen._validate_vl_exprs(
-                    subitem, allowed_variable_names, group_allowed_label_names
-                )
-
-    # Evaluates the expression of `item` considering the current
+    # Evaluates the expression `expr` of which the original string is
+    # `expr_str` at the location `text_loc` considering the current
     # generation state `state`.
     #
     # If `allow_float` is `True`, then the type of the result may be
     # `float` too.
     @staticmethod
-    def _eval_item_expr(
-        item: _ExprItemT,
+    def _eval_expr(
+        expr_str: str,
+        expr: ast.Expression,
+        text_loc: TextLocation,
         state: _GenState,
         allow_float: bool = False,
     ):
@@ -1553,15 +1795,15 @@ class _Gen:
         syms.update(state.variables)
 
         # Validate the node and its children
-        _ExprValidator(item, set(syms.keys())).visit(item.expr)
+        _ExprValidator(expr_str, text_loc, set(syms.keys())).visit(expr)
 
         # Compile and evaluate expression node
         try:
-            val = eval(compile(item.expr, "", "eval"), None, syms)
+            val = eval(compile(expr, "", "eval"), None, syms)
         except Exception as exc:
-            _raise_error_for_item(
-                "Failed to evaluate expression `{}`: {}".format(item.expr_str, exc),
-                item,
+            _raise_error(
+                "Failed to evaluate expression `{}`: {}".format(expr_str, exc),
+                text_loc,
             )
 
         # Convert `bool` result type to `int` to normalize
@@ -1577,14 +1819,78 @@ class _Gen:
             type_msg += " or `float`"
 
         if type(val) not in expected_types:
-            _raise_error_for_item(
+            _raise_error(
                 "Invalid expression `{}`: expecting result type {}, not `{}`".format(
-                    item.expr_str, type_msg, type(val).__name__
+                    expr_str, type_msg, type(val).__name__
+                ),
+                text_loc,
+            )
+
+        return val
+
+    # Evaluates the expression of `item` considering the current
+    # generation state `state`.
+    #
+    # If `allow_float` is `True`, then the type of the result may be
+    # `float` too.
+    @staticmethod
+    def _eval_item_expr(
+        item: Union[_FlNum, _Leb128Int, _VarAssign, _Rep, _Cond],
+        state: _GenState,
+        allow_float: bool = False,
+    ):
+        return _Gen._eval_expr(
+            item.expr_str, item.expr, item.text_loc, state, allow_float
+        )
+
+    # Handles the byte item `item`.
+    def _handle_byte_item(self, item: _Byte, state: _GenState):
+        self._data.append(item.val)
+        state.offset += item.size
+
+    # Handles the string item `item`.
+    def _handle_str_item(self, item: _Str, state: _GenState):
+        self._data += item.data
+        state.offset += item.size
+
+    # Handles the byte order setting item `item`.
+    def _handle_set_bo_item(self, item: _SetBo, state: _GenState):
+        # Update current byte order
+        state.bo = item.bo
+
+    # Handles the variable assignment item `item`.
+    def _handle_var_assign_item(self, item: _VarAssign, state: _GenState):
+        # Update variable
+        state.variables[item.name] = self._eval_item_expr(item, state, True)
+
+    # Handles the fixed-length number item `item`.
+    def _handle_fl_num_item(self, item: _FlNum, state: _GenState):
+        # Validate current byte order
+        if state.bo is None and item.len > 8:
+            _raise_error_for_item(
+                "Current byte order isn't defined at first fixed-length number (`{}`) to encode on more than 8 bits".format(
+                    item.expr_str
                 ),
                 item,
             )
 
-        return val
+        # Try an immediate evaluation. If it fails, then keep everything
+        # needed to (try to) generate the bytes of this item later.
+        try:
+            data = self._gen_fl_num_item_inst_data(item, state)
+        except Exception:
+            self._fl_num_item_insts.append(
+                _FlNumItemInst(item, len(self._data), copy.deepcopy(state))
+            )
+
+            # Reserve space in `self._data` for this instance
+            data = bytes([0] * (item.len // 8))
+
+        # Append bytes
+        self._data += data
+
+        # Update offset
+        state.offset += len(data)
 
     # Returns the size, in bytes, required to encode the value `val`
     # with LEB128 (signed version if `is_signed` is `True`).
@@ -1606,224 +1912,136 @@ class _Gen:
         # Seven bits per byte
         return math.ceil(bits / 7)
 
-    # Returns the offset `offset` aligned according to `item`.
-    @staticmethod
-    def _align_offset(offset: int, item: _AlignOffset):
-        align_bytes = item.val // 8
-        return (offset + align_bytes - 1) // align_bytes * align_bytes
+    # Handles the LEB128 integer item `item`.
+    def _handle_leb128_int_item(self, item: _Leb128Int, state: _GenState):
+        # Compute value
+        val = self._eval_item_expr(item, state, False)
 
-    # Computes the effective value for each repetition, conditional, and
-    # LEB128 integer instance, filling `instance_vals` (if not `None`)
-    # and returning `instance_vals`.
-    #
-    # At this point it must be known that, for a given variable-length
-    # item, its expression only contains reachable names.
-    #
-    # When handling a `_Rep` or `_Cond` item, this function appends its
-    # effective multiplier/value to `instance_vals` _before_ handling
-    # its repeated/conditional item.
-    #
-    # When handling a `_VarAssign` item, this function only evaluates it
-    # if all its names are reachable.
-    @staticmethod
-    def _compute_vl_instance_vals(
-        item: _Item, state: _GenState, instance_vals: Optional[List[int]] = None
+        # Size in bytes
+        size = self._leb128_size_for_val(val, type(item) is _SLeb128Int)
+
+        # For each byte
+        for _ in range(size):
+            # Seven LSBs, MSB of the byte set (continue)
+            self._data.append((val & 0x7F) | 0x80)
+            val >>= 7
+
+        # Clear MSB of last byte (stop)
+        self._data[-1] &= ~0x80
+
+        # Update offset
+        state.offset += size
+
+    # Handles the group item `item`, removing the immediate labels from
+    # `state` at the end if `remove_immediate_labels` is `True`.
+    def _handle_group_item(
+        self, item: _Group, state: _GenState, remove_immediate_labels: bool = True
     ):
-        if instance_vals is None:
-            instance_vals = []
+        first_fl_num_item_inst_index = len(self._fl_num_item_insts)
+        immediate_labels = {}  # type: LabelsT
 
-        if isinstance(item, _ScalarItem):
-            state.offset += item.size
-        elif type(item) is _Label:
-            state.labels[item.name] = state.offset
-        elif type(item) is _VarAssign:
-            # Check if all the names are reachable
-            do_eval = True
-
-            for name in _Gen._names_of_expr(item.expr):
-                if (
-                    name != _icitte_name
-                    and name not in state.variables
-                    and name not in state.labels
-                ):
-                    # A name is unknown: cannot evaluate
-                    do_eval = False
-                    break
-
-            if do_eval:
-                # Evaluate the expression and keep the result
-                state.variables[item.name] = _Gen._eval_item_expr(item, state, True)
-        elif type(item) is _SetOffset:
-            state.offset = item.val
-        elif type(item) is _AlignOffset:
-            state.offset = _Gen._align_offset(state.offset, item)
-        elif isinstance(item, _Leb128Int):
-            # Evaluate the expression
-            val = _Gen._eval_item_expr(item, state)
-
-            # Validate result
-            if type(item) is _ULeb128Int and val < 0:
-                _raise_error_for_item(
-                    "Invalid expression `{}`: unexpected negative result {:,} for a ULEB128 encoding".format(
-                        item.expr_str, val
-                    ),
-                    item,
-                )
-
-            # Add the evaluation result to the to variable-length item
-            # instance values.
-            instance_vals.append(val)
-
-            # Update offset
-            state.offset += _Gen._leb128_size_for_val(val, type(item) is _SLeb128Int)
-        elif type(item) is _Rep:
-            # Evaluate the expression and keep the result
-            val = _Gen._eval_item_expr(item, state)
-
-            # Validate result
-            if val < 0:
-                _raise_error_for_item(
-                    "Invalid expression `{}`: unexpected negative result {:,}".format(
-                        item.expr_str, val
-                    ),
-                    item,
-                )
-
-            # Add to variable-length item instance values
-            instance_vals.append(val)
-
-            # Process the repeated item `val` times
-            for _ in range(val):
-                _Gen._compute_vl_instance_vals(item.item, state, instance_vals)
-        elif type(item) is _Cond:
-            # Evaluate the expression and keep the result
-            val = _Gen._eval_item_expr(item, state)
-
-            # Add to variable-length item instance values
-            instance_vals.append(val)
-
-            # Process the conditional item if needed
-            if val:
-                _Gen._compute_vl_instance_vals(item.item, state, instance_vals)
-        elif type(item) is _Group:
-            prev_labels = state.labels.copy()
-
-            # Process each item
-            for subitem in item.items:
-                _Gen._compute_vl_instance_vals(subitem, state, instance_vals)
-
-            state.labels = prev_labels
-
-        return instance_vals
-
-    def _update_offset_noop(self, item: _Item, state: _GenState, next_vl_instance: int):
-        return next_vl_instance
-
-    def _dry_handle_scalar_item(
-        self, item: _ScalarItem, state: _GenState, next_vl_instance: int
-    ):
-        state.offset += item.size
-        return next_vl_instance
-
-    def _dry_handle_leb128_int_item(
-        self, item: _Leb128Int, state: _GenState, next_vl_instance: int
-    ):
-        # Get the value from `self._vl_instance_vals` _before_
-        # incrementing `next_vl_instance` to honor the order of
-        # _compute_vl_instance_vals().
-        state.offset += self._leb128_size_for_val(
-            self._vl_instance_vals[next_vl_instance], type(item) is _SLeb128Int
-        )
-
-        return next_vl_instance + 1
-
-    def _dry_handle_group_item(
-        self, item: _Group, state: _GenState, next_vl_instance: int
-    ):
+        # Handle each item
         for subitem in item.items:
-            next_vl_instance = self._dry_handle_item(subitem, state, next_vl_instance)
+            if type(subitem) is _Label:
+                # Add to local immediate labels
+                immediate_labels[subitem.name] = state.offset
 
-        return next_vl_instance
+            self._handle_item(subitem, state)
 
-    def _dry_handle_rep_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
-        # Get the value from `self._vl_instance_vals` _before_
-        # incrementing `next_vl_instance` to honor the order of
-        # _compute_vl_instance_vals().
-        mul = self._vl_instance_vals[next_vl_instance]
-        next_vl_instance += 1
+        # Remove immediate labels from current state if needed
+        if remove_immediate_labels:
+            for name in immediate_labels:
+                del state.labels[name]
 
+        # Add all immediate labels to all state snapshots since
+        # `first_fl_num_item_inst_index`.
+        for inst in self._fl_num_item_insts[first_fl_num_item_inst_index:]:
+            inst.state.labels.update(immediate_labels)
+
+    # Handles the repetition item `item`.
+    def _handle_rep_item(self, item: _Rep, state: _GenState):
+        # Compute the repetition count
+        mul = _Gen._eval_item_expr(item, state)
+
+        # Validate result
+        if mul < 0:
+            _raise_error_for_item(
+                "Invalid expression `{}`: unexpected negative result {:,}".format(
+                    item.expr_str, mul
+                ),
+                item,
+            )
+
+        # Generate item data `mul` times
         for _ in range(mul):
-            next_vl_instance = self._dry_handle_item(item.item, state, next_vl_instance)
+            self._handle_item(item.item, state)
 
-        return next_vl_instance
+    # Handles the conditional item `item`.
+    def _handle_cond_item(self, item: _Rep, state: _GenState):
+        # Compute the conditional value
+        val = _Gen._eval_item_expr(item, state)
 
-    def _dry_handle_cond_item(
-        self, item: _Cond, state: _GenState, next_vl_instance: int
-    ):
-        # Get the value from `self._vl_instance_vals` _before_
-        # incrementing `next_vl_instance` to honor the order of
-        # _compute_vl_instance_vals().
-        val = self._vl_instance_vals[next_vl_instance]
-        next_vl_instance += 1
-
+        # Generate item data if needed
         if val:
-            next_vl_instance = self._dry_handle_item(item.item, state, next_vl_instance)
+            self._handle_item(item.item, state)
 
-        return next_vl_instance
+    # Evaluates the parameters of the macro expansion item `item`
+    # considering the initial state `init_state` and returns a new state
+    # to handle the items of the macro.
+    def _eval_macro_exp_params(self, item: _MacroExp, init_state: _GenState):
+        # New state
+        exp_state = _GenState({}, {}, init_state.offset, init_state.bo)
 
-    def _dry_handle_align_offset_item(
-        self, item: _AlignOffset, state: _GenState, next_vl_instance: int
-    ):
-        state.offset = self._align_offset(state.offset, item)
-        return next_vl_instance
+        # Evaluate the parameter expressions
+        macro_def = self._macro_defs[item.name]
 
-    def _dry_handle_set_offset_item(
-        self, item: _SetOffset, state: _GenState, next_vl_instance: int
-    ):
+        for param_name, param in zip(macro_def.param_names, item.params):
+            exp_state.variables[param_name] = _Gen._eval_expr(
+                param.expr_str, param.expr, param.text_loc, init_state, True
+            )
+
+        return exp_state
+
+    # Handles the macro expansion item `item`.
+    def _handle_macro_exp_item(self, item: _MacroExp, state: _GenState):
+        # New state
+        exp_state = self._eval_macro_exp_params(item, state)
+
+        # Process the contained group
+        init_data_size = len(self._data)
+        self._handle_item(self._macro_defs[item.name].group, exp_state)
+
+        # Update state offset and return
+        state.offset += len(self._data) - init_data_size
+
+    # Handles the offset setting item `item`.
+    def _handle_set_offset_item(self, item: _SetOffset, state: _GenState):
         state.offset = item.val
-        return next_vl_instance
 
-    # Updates `state.offset` considering the generated data of `item`,
-    # without generating any, and returns the updated next
-    # variable-length item instance.
-    def _dry_handle_item(self, item: _Item, state: _GenState, next_vl_instance: int):
-        return self._dry_handle_item_funcs[type(item)](item, state, next_vl_instance)
+    # Handles offset alignment item `item` (adds padding).
+    def _handle_align_offset_item(self, item: _AlignOffset, state: _GenState):
+        init_offset = state.offset
+        align_bytes = item.val // 8
+        state.offset = (state.offset + align_bytes - 1) // align_bytes * align_bytes
+        self._data += bytes([item.pad_val] * (state.offset - init_offset))
 
-    # Handles the byte item `item`.
-    def _handle_byte_item(self, item: _Byte, state: _GenState, next_vl_instance: int):
-        self._data.append(item.val)
-        state.offset += item.size
-        return next_vl_instance
+    # Handles the label item `item`.
+    def _handle_label_item(self, item: _Label, state: _GenState):
+        state.labels[item.name] = state.offset
 
-    # Handles the string item `item`.
-    def _handle_str_item(self, item: _Str, state: _GenState, next_vl_instance: int):
-        self._data += item.data
-        state.offset += item.size
-        return next_vl_instance
+    # Handles the item `item`, returning the updated next repetition
+    # instance.
+    def _handle_item(self, item: _Item, state: _GenState):
+        return self._item_handlers[type(item)](item, state)
 
-    # Handles the byte order setting item `item`.
-    def _handle_set_bo_item(
-        self, item: _SetBo, state: _GenState, next_vl_instance: int
-    ):
-        # Update current byte order
-        state.bo = item.bo
-        return next_vl_instance
-
-    # Handles the variable assignment item `item`.
-    def _handle_var_assign_item(
-        self, item: _VarAssign, state: _GenState, next_vl_instance: int
-    ):
-        # Update variable
-        state.variables[item.name] = self._eval_item_expr(item, state, True)
-        return next_vl_instance
-
-    # Handles the fixed-length integer item `item`.
-    def _handle_fl_int_item(self, val: int, item: _FlNum, state: _GenState):
+    # Generates the data for a fixed-length integer item instance having
+    # the value `val` and returns it.
+    def _gen_fl_int_item_inst_data(self, val: int, item: _FlNum, state: _GenState):
         # Validate range
         if val < -(2 ** (item.len - 1)) or val > 2**item.len - 1:
             _raise_error_for_item(
-                "Value {:,} is outside the {}-bit range when evaluating expression `{}` at byte offset {:,}".format(
-                    val, item.len, item.expr_str, state.offset
+                "Value {:,} is outside the {}-bit range when evaluating expression `{}`".format(
+                    val, item.len, item.expr_str
                 ),
                 item,
             )
@@ -1849,11 +2067,12 @@ class _Gen:
             assert state.bo == ByteOrder.LE
             data = data[:len_bytes]
 
-        # Append to current bytes and update offset
-        self._data += data
+        # Return data
+        return data
 
-    # Handles the fixed-length integer item `item`.
-    def _handle_fl_float_item(self, val: float, item: _FlNum, state: _GenState):
+    # Generates the data for a fixed-length floating point number item
+    # instance having the value `val` and returns it.
+    def _gen_fl_float_item_inst_data(self, val: float, item: _FlNum, state: _GenState):
         # Validate length
         if item.len not in (32, 64):
             _raise_error_for_item(
@@ -1863,8 +2082,8 @@ class _Gen:
                 item,
             )
 
-        # Encode result
-        self._data += struct.pack(
+        # Encode and return result
+        return struct.pack(
             "{}{}".format(
                 ">" if state.bo in (None, ByteOrder.BE) else "<",
                 "f" if item.len == 32 else "d",
@@ -1872,143 +2091,28 @@ class _Gen:
             val,
         )
 
-    # Handles the fixed-length number item `item`.
-    def _handle_fl_num_item(
-        self, item: _FlNum, state: _GenState, next_vl_instance: int
-    ):
+    # Generates the data for a fixed-length number item instance and
+    # returns it.
+    def _gen_fl_num_item_inst_data(self, item: _FlNum, state: _GenState):
         # Compute value
         val = self._eval_item_expr(item, state, True)
 
-        # Validate current byte order
-        if state.bo is None and item.len > 8:
-            _raise_error_for_item(
-                "Current byte order isn't defined at first fixed-length number (`{}`) to encode on more than 8 bits".format(
-                    item.expr_str
-                ),
-                item,
-            )
-
         # Handle depending on type
         if type(val) is int:
-            self._handle_fl_int_item(val, item, state)
+            return self._gen_fl_int_item_inst_data(val, item, state)
         else:
             assert type(val) is float
-            self._handle_fl_float_item(val, item, state)
+            return self._gen_fl_float_item_inst_data(val, item, state)
 
-        # Update offset
-        state.offset += item.size
+    # Generates the data for all the fixed-length number item instances
+    # and writes it at the correct offset within `self._data`.
+    def _gen_fl_num_item_insts(self):
+        for inst in self._fl_num_item_insts:
+            # Generate bytes
+            data = self._gen_fl_num_item_inst_data(inst.item, inst.state)
 
-        return next_vl_instance
-
-    # Handles the LEB128 integer item `item`.
-    def _handle_leb128_int_item(
-        self, item: _Leb128Int, state: _GenState, next_vl_instance: int
-    ):
-        # Get the precomputed value
-        val = self._vl_instance_vals[next_vl_instance]
-
-        # Size in bytes
-        size = self._leb128_size_for_val(val, type(item) is _SLeb128Int)
-
-        # For each byte
-        for _ in range(size):
-            # Seven LSBs, MSB of the byte set (continue)
-            self._data.append((val & 0x7F) | 0x80)
-            val >>= 7
-
-        # Clear MSB of last byte (stop)
-        self._data[-1] &= ~0x80
-
-        # Consumed this instance
-        return next_vl_instance + 1
-
-    # Handles the group item `item`, only removing the immediate labels
-    # from `state.labels` if `remove_immediate_labels` is `True`.
-    def _handle_group_item(
-        self,
-        item: _Group,
-        state: _GenState,
-        next_vl_instance: int,
-        remove_immediate_labels: bool = True,
-    ):
-        # Compute the values of the immediate (not nested) labels. Those
-        # labels are reachable by any expression within the group.
-        tmp_state = _GenState({}, {}, state.offset, None)
-        immediate_label_names = set()  # type: Set[str]
-        tmp_next_vl_instance = next_vl_instance
-
-        for subitem in item.items:
-            if type(subitem) is _Label:
-                # New immediate label
-                state.labels[subitem.name] = tmp_state.offset
-                immediate_label_names.add(subitem.name)
-
-            tmp_next_vl_instance = self._dry_handle_item(
-                subitem, tmp_state, tmp_next_vl_instance
-            )
-
-        # Handle each item now with the actual state
-        for subitem in item.items:
-            next_vl_instance = self._handle_item(subitem, state, next_vl_instance)
-
-        # Remove immediate labels if required so that outer items won't
-        # reach inner labels.
-        if remove_immediate_labels:
-            for name in immediate_label_names:
-                del state.labels[name]
-
-        return next_vl_instance
-
-    # Handles the repetition item `item`.
-    def _handle_rep_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
-        # Get the precomputed repetition count
-        mul = self._vl_instance_vals[next_vl_instance]
-
-        # Consumed this instance
-        next_vl_instance += 1
-
-        for _ in range(mul):
-            next_vl_instance = self._handle_item(item.item, state, next_vl_instance)
-
-        return next_vl_instance
-
-    # Handles the conditional item `item`.
-    def _handle_cond_item(self, item: _Rep, state: _GenState, next_vl_instance: int):
-        # Get the precomputed conditional value
-        val = self._vl_instance_vals[next_vl_instance]
-
-        # Consumed this instance
-        next_vl_instance += 1
-
-        if val:
-            next_vl_instance = self._handle_item(item.item, state, next_vl_instance)
-
-        return next_vl_instance
-
-    # Handles the offset setting item `item`.
-    def _handle_set_offset_item(
-        self, item: _SetOffset, state: _GenState, next_vl_instance: int
-    ):
-        state.offset = item.val
-        return next_vl_instance
-
-    # Handles offset alignment item `item` (adds padding).
-    def _handle_align_offset_item(
-        self, item: _AlignOffset, state: _GenState, next_vl_instance: int
-    ):
-        init_offset = state.offset
-        state.offset = self._align_offset(state.offset, item)
-        self._data += bytes([item.pad_val] * (state.offset - init_offset))
-        return next_vl_instance
-
-    # Handles the label item `item`.
-    def _handle_label_item(self, item: _Label, state: _GenState, next_vl_instance: int):
-        return next_vl_instance
-
-    # Handles the item `item`, returning the updated next repetition
-    # instance.
-    def _handle_item(self, item: _Item, state: _GenState, next_vl_instance: int):
-        return self._item_handlers[type(item)](item, state, next_vl_instance)
+            # Insert bytes into `self._data`
+            self._data[inst.offset_in_data : inst.offset_in_data + len(data)] = data
 
     # Generates the data (`self._data`) and final state
     # (`self._final_state`) from `group` and the initial state `state`.
@@ -2024,6 +2128,7 @@ class _Gen:
             _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,
+            _MacroExp: self._handle_macro_exp_item,
             _Rep: self._handle_rep_item,
             _SetBo: self._handle_set_bo_item,
             _SetOffset: self._handle_set_offset_item,
@@ -2031,31 +2136,18 @@ class _Gen:
             _Str: self._handle_str_item,
             _ULeb128Int: self._handle_leb128_int_item,
             _VarAssign: self._handle_var_assign_item,
-        }  # type: Dict[type, Callable[[Any, _GenState, int], int]]
-
-        # Dry item handlers (only updates the state offset)
-        self._dry_handle_item_funcs = {
-            _AlignOffset: self._dry_handle_align_offset_item,
-            _Byte: self._dry_handle_scalar_item,
-            _Cond: self._dry_handle_cond_item,
-            _FlNum: self._dry_handle_scalar_item,
-            _Group: self._dry_handle_group_item,
-            _Label: self._update_offset_noop,
-            _Rep: self._dry_handle_rep_item,
-            _SetBo: self._update_offset_noop,
-            _SetOffset: self._dry_handle_set_offset_item,
-            _SLeb128Int: self._dry_handle_leb128_int_item,
-            _Str: self._dry_handle_scalar_item,
-            _ULeb128Int: self._dry_handle_leb128_int_item,
-            _VarAssign: self._update_offset_noop,
-        }  # type: Dict[type, Callable[[Any, _GenState, int], int]]
+        }  # type: Dict[type, Callable[[Any, _GenState], None]]
 
         # Handle the group item, _not_ removing the immediate labels
         # because the `labels` property offers them.
-        self._handle_group_item(group, state, 0, False)
+        self._handle_group_item(group, state, False)
 
         # This is actually the final state
         self._final_state = state
+
+        # Generate all the fixed-length number bytes now that we know
+        # their full state
+        self._gen_fl_num_item_insts()
 
 
 # Returns a `ParseResult` instance containing the bytes encoded by the
@@ -2087,8 +2179,10 @@ def parse(
     if init_labels is None:
         init_labels = {}
 
+    parser = _Parser(normand, init_variables, init_labels)
     gen = _Gen(
-        _Parser(normand, init_variables, init_labels).res,
+        parser.res,
+        parser.macro_defs,
         init_variables,
         init_labels,
         init_offset,

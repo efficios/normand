@@ -1,0 +1,31 @@
+!m meow_mix(count)
+  "meow " * count "mix"
+!end
+
+!m doit(cond, true_count, false_count)
+  !if cond
+    m:meow_mix(true_count)
+  !end
+
+  !if {not cond}
+    m:meow_mix(false_count)
+  !end
+!end
+
+!m stein(cond)
+  m:doit(cond, 3, 4)
+!end
+
+{cond = 1} m:stein(cond) " " {cond = 0} m:stein(cond)
+---
+6d 65 6f 77 20
+6d 65 6f 77 20
+6d 65 6f 77 20
+6d 69 78
+20
+
+6d 65 6f 77 20
+6d 65 6f 77 20
+6d 65 6f 77 20
+6d 65 6f 77 20
+6d 69 78

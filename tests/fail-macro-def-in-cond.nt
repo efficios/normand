@@ -1,0 +1,7 @@
+!if {23}
+  !macro salut()
+    "meow" 23 42
+  !end
+!end
+---
+2:3 - Expecting an item or `!end` (end of conditional block)

@@ -1,0 +1,5 @@
+!macro meow-mix(a, b, c)
+  "meow" 23 42
+!end
+---
+1:12 - Expecting `(`

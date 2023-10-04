@@ -1,0 +1,5 @@
+!macro salut(meow, mix, meow)
+  "meow" 23 42
+!end
+---
+1:25 - Duplicate macro parameter named `meow`

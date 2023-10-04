@@ -1,0 +1,8 @@
+!macro bake()
+  {le} {ICITTE * 8 : 16}
+  u16le"predict explode"
+!end
+
+ff
+---
+ff

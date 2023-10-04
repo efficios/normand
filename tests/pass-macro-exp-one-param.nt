@@ -1,0 +1,21 @@
+!m meow(rep)
+  !repeat rep
+    aa bb cc dd
+    "hello"
+  !end
+!end
+
+ff ff m:meow(3) ee ee
+---
+ff ff
+
+aa bb cc dd
+68 65 6c 6c 6f
+
+aa bb cc dd
+68 65 6c 6c 6f
+
+aa bb cc dd
+68 65 6c 6c 6f
+
+ee ee

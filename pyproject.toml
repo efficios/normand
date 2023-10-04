@@ -23,7 +23,7 @@
 
 [tool.poetry]
 name = 'normand'
-version = '0.10.0'
+version = '0.11.0'
 description = 'Text-to-binary processor with its own language'
 license = 'MIT'
 authors = ['Philippe Proulx <eeppeliteloop@gmail.com>']

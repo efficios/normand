@@ -1,0 +1,12 @@
+<11> {be} aa <meow>
+bb cc dd*5
+{mix = meow}
+ee
+{mix:8}
+ff
+---
+aa
+bb cc dd dd dd dd dd
+ee
+0c
+ff

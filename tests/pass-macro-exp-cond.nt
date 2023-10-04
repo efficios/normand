@@ -1,0 +1,10 @@
+!m maybe(cond)
+  !if cond
+    "salut"
+  !end
+!end
+
+m:maybe(0) ff m:maybe(1)
+---
+ff
+73 61 6c 75 74

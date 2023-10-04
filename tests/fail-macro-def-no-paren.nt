@@ -1,0 +1,5 @@
+!macro salut
+  "meow" 23 42
+!end
+---
+2:3 - Expecting `(`

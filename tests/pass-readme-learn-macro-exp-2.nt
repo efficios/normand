@@ -1,0 +1,23 @@
+!macro A(val, is_be)
+  {le}
+
+  !if is_be
+    {be}
+  !end
+
+  {val : 16}
+!end
+
+!macro B(rep, is_be)
+  {iter = 1}
+
+  !repeat rep
+  m:A({iter * 3}, is_be)
+  {iter = iter + 1}
+  !end
+!end
+
+m:B(5, 1)
+m:B(3, 0)
+---
+00 03 00 06 00 09 00 0c 00 0f 03 00 06 00 09 00

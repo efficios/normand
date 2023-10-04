@@ -1,0 +1,17 @@
+!macro salut()
+  "meow" 23 42
+!end
+
+aa bb cc dd
+
+!macro meow()
+  "mix"
+!end
+
+"coucou"
+
+!macro salut()
+  "dup!"
+!end
+---
+13:8 - Duplicate macro named `salut`

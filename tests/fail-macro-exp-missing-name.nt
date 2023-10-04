@@ -1,0 +1,7 @@
+!macro salut(a, b, c)
+  "meow" 23 42
+!end
+
+aa bb m:(1, 2, 3)
+---
+5:9 - Expecting a valid macro name

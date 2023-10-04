@@ -1,0 +1,13 @@
+!m meow()
+  aa bb cc dd
+  "hello"
+!end
+
+ff ff m:meow() ee ee
+---
+ff ff
+
+aa bb cc dd
+68 65 6c 6c 6f
+
+ee ee

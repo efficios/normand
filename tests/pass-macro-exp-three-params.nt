@@ -1,0 +1,28 @@
+!m meow(rep, cond, val)
+  !repeat rep
+    aa bb cc dd
+
+    !if cond
+      "hello" {val * 2 : 8}
+    !end
+  !end
+!end
+
+ff <lbl1> ff m:meow(3, 0, {lbl1 * 2}) ee ee
+ff <lbl2> ff m:meow(2, 1, {lbl2 * 2}) ee ee
+---
+ff ff
+  aa bb cc dd
+  aa bb cc dd
+  aa bb cc dd
+ee ee
+
+ff ff
+  aa bb cc dd
+  68 65 6c 6c 6f
+  44
+
+  aa bb cc dd
+  68 65 6c 6c 6f
+  44
+ee ee

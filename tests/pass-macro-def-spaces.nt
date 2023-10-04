@@ -1,0 +1,7 @@
+!macro salut ( meow , mix )
+  11 22 33 44
+!end
+
+aa
+---
+aa
