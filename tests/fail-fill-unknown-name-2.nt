@@ -1,0 +1,5 @@
+{zoom = 32}
+aa bb cc +yo "zoom"
+{yo = 0x99}
+---
+2:10 - Illegal (unknown or unreachable) variable/label name `yo` in expression `yo`; the legal names are {`ICITTE`, `zoom`}

@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -239,6 +239,29 @@ class _ExprMixin:
     @property
     def expr(self):
         return self._expr
+
+
+# Fill until some offset.
+class _FillUntil(_Item, _ExprMixin):
+    def __init__(
+        self, expr_str: str, expr: ast.Expression, pad_val: int, text_loc: TextLocation
+    ):
+        super().__init__(text_loc)
+        _ExprMixin.__init__(self, expr_str, expr)
+        self._pad_val = pad_val
+
+    # Padding byte value.
+    @property
+    def pad_val(self):
+        return self._pad_val
+
+    def __repr__(self):
+        return "_FillUntil({}, {}, {}, {})".format(
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._pad_val),
+            repr(self._text_loc),
+        )
 
 
 # Variable assignment.
@@ -603,7 +626,7 @@ class _Parser:
 
     # Pattern for _skip_ws_and_comments()
     _ws_or_syms_or_comments_pat = re.compile(
-        r"(?:[\s/\\?&:;.,+[\]_=|-]|#[^#]*?(?:\n|#))*"
+        r"(?:[\s/\\?&:;.,[\]_=|-]|#[^#]*?(?:\n|#))*"
     )
 
     # Skips as many whitespaces, insignificant symbol characters, and
@@ -1050,10 +1073,38 @@ class _Parser:
         self._expect_pat(self._label_set_offset_suffix_pat, "Expecting `>`")
         return item
 
+    # Pattern for _parse_pad_val()
+    _pad_val_prefix_pat = re.compile(r"~")
+
+    # Tries to parse a padding value, returning the padding value, or 0
+    # if none.
+    def _parse_pad_val(self):
+        # Padding value?
+        self._skip_ws()
+        pad_val = 0
+
+        if self._try_parse_pat(self._pad_val_prefix_pat) is not None:
+            self._skip_ws()
+            pad_val_text_loc = self._text_loc
+            m = self._expect_pat(
+                self._pos_const_int_pat,
+                "Expecting a positive constant integer (byte value)",
+            )
+
+            # Validate
+            pad_val = int(m.group(0), 0)
+
+            if pad_val > 255:
+                _raise_error(
+                    "Invalid padding byte value {}".format(pad_val),
+                    pad_val_text_loc,
+                )
+
+        return pad_val
+
     # Patterns for _try_parse_align_offset()
     _align_offset_prefix_pat = re.compile(r"@")
     _align_offset_val_pat = re.compile(r"\d+")
-    _align_offset_pad_val_prefix_pat = re.compile(r"~")
 
     # Tries to parse an offset alignment, returning an offset alignment
     # item on success.
@@ -1065,9 +1116,8 @@ class _Parser:
             # No match
             return
 
-        self._skip_ws()
-
         # Expect an alignment
+        self._skip_ws()
         align_text_loc = self._text_loc
         m = self._expect_pat(
             self._align_offset_val_pat,
@@ -1085,26 +1135,34 @@ class _Parser:
                 align_text_loc,
             )
 
-        # Padding value?
-        self._skip_ws()
-        pad_val = 0
-
-        if self._try_parse_pat(self._align_offset_pad_val_prefix_pat) is not None:
-            self._skip_ws()
-            pad_val_text_loc = self._text_loc
-            m = self._expect_pat(self._pos_const_int_pat, "Expecting a byte value")
-
-            # Validate
-            pad_val = int(m.group(0), 0)
-
-            if pad_val > 255:
-                _raise_error(
-                    "Invalid padding byte value {}".format(pad_val),
-                    pad_val_text_loc,
-                )
+        # Padding value
+        pad_val = self._parse_pad_val()
 
         # Return item
         return _AlignOffset(val, pad_val, begin_text_loc)
+
+    # Patterns for _try_parse_fill_until()
+    _fill_until_prefix_pat = re.compile(r"\+")
+    _fill_until_pad_val_prefix_pat = re.compile(r"~")
+
+    # Tries to parse a filling, returning a filling item on success.
+    def _try_parse_fill_until(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._fill_until_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect expression
+        self._skip_ws()
+        expr_str, expr = self._expect_const_int_name_expr(True)
+
+        # Padding value
+        pad_val = self._parse_pad_val()
+
+        # Return item
+        return _FillUntil(expr_str, expr, pad_val, begin_text_loc)
 
     # Patterns for _expect_rep_mul_expr()
     _inner_expr_prefix_pat = re.compile(r"\{")
@@ -1423,6 +1481,12 @@ class _Parser:
 
         # Offset alignment item?
         item = self._try_parse_align_offset()
+
+        if item is not None:
+            return item
+
+        # Filling item?
+        item = self._try_parse_fill_until()
 
         if item is not None:
             return item
@@ -1835,7 +1899,7 @@ class _Gen:
     # `float` too.
     @staticmethod
     def _eval_item_expr(
-        item: Union[_FlNum, _Leb128Int, _VarAssign, _Rep, _Cond],
+        item: Union[_FlNum, _Leb128Int, _FillUntil, _VarAssign, _Rep, _Cond],
         state: _GenState,
         allow_float: bool = False,
     ):
@@ -2018,12 +2082,32 @@ class _Gen:
     def _handle_set_offset_item(self, item: _SetOffset, state: _GenState):
         state.offset = item.val
 
-    # Handles offset alignment item `item` (adds padding).
+    # Handles the offset alignment item `item` (adds padding).
     def _handle_align_offset_item(self, item: _AlignOffset, state: _GenState):
         init_offset = state.offset
         align_bytes = item.val // 8
         state.offset = (state.offset + align_bytes - 1) // align_bytes * align_bytes
         self._data += bytes([item.pad_val] * (state.offset - init_offset))
+
+    # Handles the filling item `item` (adds padding).
+    def _handle_fill_until_item(self, item: _FillUntil, state: _GenState):
+        # Compute the new offset
+        new_offset = _Gen._eval_item_expr(item, state)
+
+        # Validate the new offset
+        if new_offset < state.offset:
+            _raise_error_for_item(
+                "Invalid expression `{}`: new offset {:,} is less than current offset {:,}".format(
+                    item.expr_str, new_offset, state.offset
+                ),
+                item,
+            )
+
+        # Fill
+        self._data += bytes([item.pad_val] * (new_offset - state.offset))
+
+        # Update offset
+        state.offset = new_offset
 
     # Handles the label item `item`.
     def _handle_label_item(self, item: _Label, state: _GenState):
@@ -2125,6 +2209,7 @@ class _Gen:
             _AlignOffset: self._handle_align_offset_item,
             _Byte: self._handle_byte_item,
             _Cond: self._handle_cond_item,
+            _FillUntil: self._handle_fill_until_item,
             _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,

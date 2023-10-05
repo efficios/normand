@@ -1,0 +1,7 @@
+aa {zoom = 10} bb cc +zoom~0xcc {ICITTE:8}
++ 15 ~ 255 {ICITTE:8}
+---
+aa bb cc cc cc
+cc cc cc cc cc
+0a ff ff ff ff
+0f

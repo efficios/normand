@@ -1,4 +1,4 @@
-88 44 @16~-45 "meow"
-@ 56 ~ 127 $132
+88 44 +16~yo "meow"
++ 56 ~ 127 $132
 ---
 1:11 - Expecting a positive constant integer (byte value)

@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.11, meaning both the Normand
+WARNING: This version of Normand is 0.12, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -241,6 +241,40 @@ Output:
 ff 85 ff ff 00 00 15 d0
 ----
 
+Filling::
++
+Input:
++
+----
+{le}
+{0xdeadbeef:32}
+{-1993:16}
+{9:16}
++0x40
+{ICITTE:8}
+"meow mix"
++200~0xff
+{ICITTE:8}
+----
++
+Output:
++
+----
+ef be ad de 37 f8 09 00  00 00 00 00 00 00 00 00  ┆ ••••7•••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+40 6d 65 6f 77 20 6d 69  78 ff ff ff ff ff ff ff  ┆ @meow mix•••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
+ff ff ff ff ff ff ff ff  c8                       ┆ •••••••••
+----
+
 Multilevel grouping::
 +
 Input:
@@ -417,6 +451,8 @@ The available items are:
 
 * A <<current-offset-alignment,current offset alignment>>.
 
+* A <<filling,filling>>.
+
 * A <<label,label>>, that is, a named constant holding the current
   offset.
 +
@@ -458,7 +494,7 @@ the following symbol characters are also considered comments where a
 comment may exist:
 
 ----
-/ \ ? & : ; . , + [ ] _ = | -
+/ \ ? & : ; . , [ ] _ = | -
 ----
 
 The latter serve to improve readability so that you may write, for
@@ -959,6 +995,114 @@ Output:
 
 ----
 aa bb cc ff ff ff 7a 6f  6f 6d  ┆ ••••••zoom
+----
+====
+
+=== Filling
+
+A _filling_ represents zero or more padding bytes to make the
+<<cur-offset,current offset>> reach a given value.
+
+A filling is:
+
+. The ``pass:[+]`` prefix.
+
+. One of:
+
+** A positive integer (hexadecimal starting with `0x` or `0X` accepted)
+   which is the current offset target.
+
+** The ``pass:[{]`` prefix, a valid {py3} expression of which the
+   evaluation result type is `int` or `bool` (automatically converted to
+   `int`), and the ``pass:[}]`` suffix.
++
+For a filling at some source location{nbsp}__**L**__, this expression
+may contain:
++
+--
+* The name of any <<label,label>> defined before{nbsp}__**L**__
+  which isn't within a nested group.
+* The name of any <<variable-assignment,variable>> known
+  at{nbsp}__**L**__.
+--
++
+The value of the special name `ICITTE` (`int` type) in this expression
+is the <<cur-offset,current offset>> (before handling the items to
+repeat).
+
+** A valid {py3} name.
++
+For the name `__NAME__`, this is equivalent to the
+`pass:[{]__NAME__pass:[}]` form above.
+
++
+This value must be greater than or equal to the current offset where
+it's used.
+
+. **Optional**:
++
+--
+. The ``pass:[~]`` prefix.
+. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
+  which is the value of the byte to use as padding to reach the
+  current offset target.
+--
++
+Without this section, the padding byte value is zero.
+
+====
+Input:
+
+----
+aa bb cc dd
++0x40
+"hello world"
+----
+
+Output:
+
+----
+aa bb cc dd 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ┆ ••••••••••••••••
+68 65 6c 6c 6f 20 77 6f  72 6c 64                 ┆ hello world
+----
+====
+
+====
+Input:
+
+----
+!macro part(iter, fill)
+  <0> "particular security " {ord('0') + iter : 8} +fill~0x80
+!end
+
+{iter = 1}
+
+!repeat 5
+  m:part(iter, {32 + 4 * iter})
+  {iter = iter + 1}
+!end
+----
+
+Output:
+
+----
+70 61 72 74 69 63 75 6c  61 72 20 73 65 63 75 72  ┆ particular secur
+69 74 79 20 31 80 80 80  80 80 80 80 80 80 80 80  ┆ ity 1•••••••••••
+80 80 80 80 70 61 72 74  69 63 75 6c 61 72 20 73  ┆ ••••particular s
+65 63 75 72 69 74 79 20  32 80 80 80 80 80 80 80  ┆ ecurity 2•••••••
+80 80 80 80 80 80 80 80  80 80 80 80 70 61 72 74  ┆ ••••••••••••part
+69 63 75 6c 61 72 20 73  65 63 75 72 69 74 79 20  ┆ icular security
+33 80 80 80 80 80 80 80  80 80 80 80 80 80 80 80  ┆ 3•••••••••••••••
+80 80 80 80 80 80 80 80  70 61 72 74 69 63 75 6c  ┆ ••••••••particul
+61 72 20 73 65 63 75 72  69 74 79 20 34 80 80 80  ┆ ar security 4•••
+80 80 80 80 80 80 80 80  80 80 80 80 80 80 80 80  ┆ ••••••••••••••••
+80 80 80 80 80 80 80 80  70 61 72 74 69 63 75 6c  ┆ ••••••••particul
+61 72 20 73 65 63 75 72  69 74 79 20 35 80 80 80  ┆ ar security 5•••
+80 80 80 80 80 80 80 80  80 80 80 80 80 80 80 80  ┆ ••••••••••••••••
+80 80 80 80 80 80 80 80  80 80 80 80              ┆ ••••••••••••
 ----
 ====
 
