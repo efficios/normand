@@ -1,0 +1,13 @@
+!m salut(meow)
+  !if meow
+    "true"
+  !else
+    "false"
+  !end
+!end
+
+m:salut(1)
+m:salut(0)
+---
+74 72 75 65
+66 61 6c 73 65

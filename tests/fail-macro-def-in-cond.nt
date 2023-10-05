@@ -4,4 +4,4 @@
   !end
 !end
 ---
-2:3 - Expecting an item or `!end` (end of conditional block)
+2:3 - Expecting an item, `!else`, or `!end` (end of conditional block)

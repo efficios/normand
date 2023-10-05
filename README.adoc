@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.13, meaning both the Normand
+WARNING: This version of Normand is 0.14, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -184,6 +184,8 @@ aa bb cc
 
   !if {ICITTE > 10}
     "bar"
+  !else
+    "fight"
   !end
 ) * 4
 ----
@@ -191,8 +193,8 @@ aa bb cc
 Output:
 +
 ----
-aa bb cc 66 6f 6f 66 6f  6f 66 6f 6f 62 61 72 66  ┆ •••foofoofoobarf
-6f 6f 62 61 72                                    ┆ oobar
+aa bb cc 66 6f 6f 66 69  67 68 74 66 6f 6f 66 69  ┆ •••foofightfoofi
+67 68 74 66 6f 6f 62 61  72 66 6f 6f 62 61 72     ┆ ghtfoobarfoobar
 ----
 
 Repetition::
@@ -1283,8 +1285,9 @@ Output:
 
 === Conditional block
 
-A _conditional block_ represents either the bytes of one or more items
-if some expression is true, or no bytes at all if it's false.
+A _conditional block_ represents either the bytes of zero or more items
+if some expression is true, or the bytes of zero or more other items if
+it's false.
 
 A conditional block is:
 
@@ -1315,7 +1318,12 @@ items).
 For the name `__NAME__`, this is equivalent to the
 `pass:[{]__NAME__pass:[}]` form above.
 
-. Zero or more items.
+. Zero or more items to be handled when the condition is true.
+
+. **Optional**:
+
+.. The `!else` opening.
+.. Zero or more items to be handled when the condition is false.
 
 . The `!end` closing.
 
@@ -1331,9 +1339,11 @@ Input:
 
   !if {ICITTE > 25}
     "mix"
-
-    !if {at < rep_count} 20 !end
+  !else
+    "zoom"
   !end
+
+  !if {at < rep_count} 20 !end
 
   {at = at + 1}
 !end
@@ -1342,10 +1352,12 @@ Input:
 Output:
 
 ----
-6d 65 6f 77 20 6d 65 6f  77 20 6d 65 6f 77 20 6d  ┆ meow meow meow m
-65 6f 77 20 6d 65 6f 77  20 6d 65 6f 77 20 6d 69  ┆ eow meow meow mi
+6d 65 6f 77 20 7a 6f 6f  6d 20 6d 65 6f 77 20 7a  ┆ meow zoom meow z
+6f 6f 6d 20 6d 65 6f 77  20 7a 6f 6f 6d 20 6d 65  ┆ oom meow zoom me
+6f 77 20 6d 69 78 20 6d  65 6f 77 20 6d 69 78 20  ┆ ow mix meow mix
+6d 65 6f 77 20 6d 69 78  20 6d 65 6f 77 20 6d 69  ┆ meow mix meow mi
 78 20 6d 65 6f 77 20 6d  69 78 20 6d 65 6f 77 20  ┆ x meow mix meow
-6d 69 78 20 6d 65 6f 77  20 6d 69 78              ┆ mix meow mix
+6d 69 78                                          ┆ mix
 ----
 ====
 

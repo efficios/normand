@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -380,20 +380,32 @@ class _Rep(_Item, _ExprMixin):
 # Conditional item.
 class _Cond(_Item, _ExprMixin):
     def __init__(
-        self, item: _Item, expr_str: str, expr: ast.Expression, text_loc: TextLocation
+        self,
+        true_item: _Item,
+        false_item: _Item,
+        expr_str: str,
+        expr: ast.Expression,
+        text_loc: TextLocation,
     ):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
-        self._item = item
+        self._true_item = true_item
+        self._false_item = false_item
 
-    # Conditional item.
+    # Item when condition is true.
     @property
-    def item(self):
-        return self._item
+    def true_item(self):
+        return self._true_item
+
+    # Item when condition is false.
+    @property
+    def false_item(self):
+        return self._false_item
 
     def __repr__(self):
-        return "_Cond({}, {}, {}, {})".format(
-            repr(self._item),
+        return "_Cond({}, {}, {}, {}, {})".format(
+            repr(self._true_item),
+            repr(self._false_item),
             repr(self._expr_str),
             repr(self._expr),
             repr(self._text_loc),
@@ -1299,6 +1311,7 @@ class _Parser:
 
     # Pattern for _try_parse_cond_block()
     _cond_block_prefix_pat = re.compile(r"!if\b")
+    _cond_block_else_pat = re.compile(r"!else\b")
 
     # Tries to parse a conditional block, returning a conditional item
     # on success.
@@ -1314,20 +1327,36 @@ class _Parser:
         self._skip_ws_and_comments()
         expr_str, expr = self._expect_const_int_name_expr(False)
 
-        # Parse items
+        # Parse "true" items
         self._skip_ws_and_comments()
-        items_text_loc = self._text_loc
-        items = self._parse_items()
+        true_items_text_loc = self._text_loc
+        true_items = self._parse_items()
+        false_items = []  # type: List[_Item]
+        false_items_text_loc = begin_text_loc
+
+        # `!else`?
+        self._skip_ws_and_comments()
+
+        if self._try_parse_pat(self._cond_block_else_pat) is not None:
+            # Parse "false" items
+            self._skip_ws_and_comments()
+            false_items_text_loc = self._text_loc
+            false_items = self._parse_items()
 
         # Expect end of block
-        self._skip_ws_and_comments()
         self._expect_pat(
             self._block_end_pat,
-            "Expecting an item or `!end` (end of conditional block)",
+            "Expecting an item, `!else`, or `!end` (end of conditional block)",
         )
 
         # Return item
-        return _Cond(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
+        return _Cond(
+            _Group(true_items, true_items_text_loc),
+            _Group(false_items, false_items_text_loc),
+            expr_str,
+            expr,
+            begin_text_loc,
+        )
 
     # Common left parenthesis pattern
     _left_paren_pat = re.compile(r"\(")
@@ -2078,13 +2107,15 @@ class _Gen:
             self._handle_item(item.item, state)
 
     # Handles the conditional item `item`.
-    def _handle_cond_item(self, item: _Rep, state: _GenState):
+    def _handle_cond_item(self, item: _Cond, state: _GenState):
         # Compute the conditional value
         val = _Gen._eval_item_expr(item, state)
 
         # Generate item data if needed
         if val:
-            self._handle_item(item.item, state)
+            self._handle_item(item.true_item, state)
+        else:
+            self._handle_item(item.false_item, state)
 
     # Evaluates the parameters of the macro expansion item `item`
     # considering the initial state `init_state` and returns a new state

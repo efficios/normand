@@ -1,0 +1,11 @@
+!m salut(meow)
+  !if meow
+    "true"
+  !else
+    "false"
+!end
+
+m:salut(1)
+m:salut(0)
+---
+8:3 - Unknown macro name `salut`
