@@ -5,7 +5,7 @@
 +0x40
 {ICITTE:8}
 "meow mix"
-+200~0xff
++200~FFh
 {ICITTE:8}
 ---
 ef be ad de 37 f8 09 00 00 00 00 00 00 00 00 00

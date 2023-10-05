@@ -1,0 +1,8 @@
+!m ci(val)
+  {val:8}
+!end
+
+m:ci(42)
+m:ci(-17)
+---
+2a ef

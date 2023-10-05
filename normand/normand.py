@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -993,8 +993,45 @@ class _Parser:
         self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
         return item
 
+    # Returns a normalized version (so as to be parseable by int()) of
+    # the constant integer string `s`, possibly negative, dealing with
+    # any radix suffix.
+    @staticmethod
+    def _norm_const_int(s: str):
+        neg = ""
+        pos = s
+
+        if s.startswith("-"):
+            neg = "-"
+            pos = s[1:]
+
+        for r in "xXoObB":
+            if pos.startswith("0" + r):
+                # Already correct
+                return s
+
+        # Try suffix
+        asm_suf_base = {
+            "h": "x",
+            "H": "x",
+            "q": "o",
+            "Q": "o",
+            "o": "o",
+            "O": "o",
+            "b": "b",
+            "B": "B",
+        }
+
+        for suf in asm_suf_base:
+            if pos[-1] == suf:
+                s = "{}0{}{}".format(neg, asm_suf_base[suf], pos.rstrip(suf))
+
+        return s
+
     # Common constant integer patterns
-    _pos_const_int_pat = re.compile(r"0[Xx][A-Fa-f0-9]+|\d+")
+    _pos_const_int_pat = re.compile(
+        r"0[Xx][A-Fa-f0-9]+|0[Oo][0-7]+|0[Bb][01]+|[A-Fa-f0-9]+[hH]|[0-7]+[qQoO]|[01]+[bB]|\d+"
+    )
     _const_int_pat = re.compile(r"(?P<neg>-)?(?:{})".format(_pos_const_int_pat.pattern))
 
     # Tries to parse an offset setting value (after the initial `<`),
@@ -1010,7 +1047,7 @@ class _Parser:
             return
 
         # Return item
-        return _SetOffset(int(m.group(0), 0), begin_text_loc)
+        return _SetOffset(int(self._norm_const_int(m.group(0)), 0), begin_text_loc)
 
     # Tries to parse a label name (after the initial `<`), returning a
     # label item on success.
@@ -1092,7 +1129,7 @@ class _Parser:
             )
 
             # Validate
-            pad_val = int(m.group(0), 0)
+            pad_val = int(self._norm_const_int(m.group(0)), 0)
 
             if pad_val > 255:
                 _raise_error(
@@ -1217,7 +1254,7 @@ class _Parser:
             if m.group("neg") == "-" and not allow_neg:
                 _raise_error("Expecting a positive constant integer", expr_text_loc)
 
-            expr_str = m.group(0)
+            expr_str = self._norm_const_int(m.group(0))
 
         return self._ast_expr_from_str(expr_str, expr_text_loc)
 

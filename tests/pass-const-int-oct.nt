@@ -1,0 +1,42 @@
+!m ci(val)
+  {val:8}
+!end
+
+m:ci(0o01)
+m:ci(0o23)
+m:ci(0o45)
+m:ci(0o67)
+m:ci(0O01)
+m:ci(0O23)
+m:ci(0O45)
+m:ci(0O67)
+m:ci(01o)
+m:ci(23o)
+m:ci(45o)
+m:ci(67o)
+m:ci(01O)
+m:ci(23O)
+m:ci(45O)
+m:ci(67O)
+m:ci(01q)
+m:ci(23q)
+m:ci(45q)
+m:ci(67q)
+m:ci(01Q)
+m:ci(23Q)
+m:ci(45Q)
+m:ci(67Q)
+m:ci(-0o75)
+m:ci(-0O75)
+m:ci(-75o)
+m:ci(-75O)
+m:ci(-75q)
+m:ci(-75Q)
+---
+01 13 25 37
+01 13 25 37
+01 13 25 37
+01 13 25 37
+01 13 25 37
+01 13 25 37
+c3 c3 c3 c3 c3 c3

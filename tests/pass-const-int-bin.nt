@@ -1,0 +1,15 @@
+!m ci(val)
+  {val:8}
+!end
+
+m:ci(0b11001010)
+m:ci(0B11001010)
+m:ci(11001010b)
+m:ci(11001010B)
+m:ci(-0b1010011)
+m:ci(-0B1010011)
+m:ci(-1010011b)
+m:ci(-1010011B)
+---
+ca ca ca ca
+ad ad ad ad

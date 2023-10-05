@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.12, meaning both the Normand
+WARNING: This version of Normand is 0.13, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -253,7 +253,7 @@ Input:
 +0x40
 {ICITTE:8}
 "meow mix"
-+200~0xff
++200~FFh
 {ICITTE:8}
 ----
 +
@@ -500,6 +500,34 @@ comment may exist:
 The latter serve to improve readability so that you may write, for
 example, a MAC address or a UUID as is.
 
+[[const-int]] Many items require a _constant integer_, possibly
+negative, in which case it may start with `-` for a negative integer. A
+positive constant integer is any of:
+
+Decimal::
+    One or mode digits (`0` to `9`).
+
+Hexadecimal::
+    One of:
++
+* The `0x` or `0X` prefix followed with one or more hexadecimal digits
+  (`0` to `9`, `a` to `f`, or `A` to `F`).
+* One or more hexadecimal digits followed with the `h` or `H` suffix.
+
+Octal::
+    One of:
++
+* The `0o` or `0O` prefix followed with one or more octal digits
+  (`0` to `7`).
+* One or more octal digits followed with the `o`, `O`, `q`, or `Q`
+  suffix.
+
+Binary::
+    One of:
++
+* The `0b` or `0B` prefix followed with one or more bits (`0` or `1`).
+* One or more bits followed with the `b` or `B` suffix.
+
 You can test the examples of this section with the `normand`
 <<command-line-tool,command-line tool>> as such:
 
@@ -516,10 +544,10 @@ A _byte constant_ represents a single byte.
 A byte constant is:
 
 Hexadecimal form::
-    Two consecutive hexits.
+    Two consecutive hexadecimal digits.
 
 Decimal form::
-    A decimal number after the `$` prefix.
+    One or more digits after the `$` prefix.
 
 Binary form::
     Eight bits after the `%` prefix.
@@ -704,7 +732,7 @@ either:
 The available lengths are 8, 16, 24, 32, 40, 48, 56, and 64.
 
 * A floating point number
-  ([IEEE{nbsp}754-2008[https://standards.ieee.org/standard/754-2008.html]).
+  (IEEE{nbsp}754-2008[https://standards.ieee.org/standard/754-2008.html]).
 +
 The available length are 32 (_binary32_) and 64 (_binary64_).
 
@@ -826,7 +854,8 @@ For an LEB128 integer at some source location{nbsp}__**L**__, this
 expression may contain:
 +
 --
-* The name of any <<label,label>> defined before{nbsp}__**L**__.
+* The name of any <<label,label>> defined before{nbsp}__**L**__
+  which isn't within a nested group.
 * The name of any <<variable-assignment,variable>> known
   at{nbsp}__**L**__.
 --
@@ -886,8 +915,8 @@ A current offset setting is:
 
 . The `<` prefix.
 
-. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-  which is the new current offset.
+. A <<const-int,positive constant integer>> which is the new current
+  offset.
 
 . The `>` suffix.
 
@@ -936,8 +965,8 @@ A current offset alignment is:
 
 . The `@` prefix.
 
-. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-  which is the alignment value in _bits_.
+. A <<const-int,positive constant integer>> which is the alignment value
+  in _bits_.
 +
 This value must be greater than zero and a multiple of{nbsp}8.
 
@@ -945,9 +974,8 @@ This value must be greater than zero and a multiple of{nbsp}8.
 +
 --
 . The ``pass:[~]`` prefix.
-. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-  which is the value of the byte to use as padding to align the
-  <<cur-offset,current offset>>.
+. A <<const-int,positive constant integer>> which is the value of the
+  byte to use as padding to align the <<cur-offset,current offset>>.
 --
 +
 Without this section, the padding byte value is zero.
@@ -1009,8 +1037,8 @@ A filling is:
 
 . One of:
 
-** A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-   which is the current offset target.
+** A <<const-int,positive constant integer>> which is the current offset
+   target.
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
@@ -1043,9 +1071,8 @@ it's used.
 +
 --
 . The ``pass:[~]`` prefix.
-. A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-  which is the value of the byte to use as padding to reach the
-  current offset target.
+. A <<const-int,positive constant integer>> which is the value of the
+  byte to use as padding to reach the current offset target.
 --
 +
 Without this section, the padding byte value is zero.
@@ -1354,8 +1381,8 @@ A repetition block is:
 
 . One of:
 
-** A positive integer (hexadecimal starting with `0x` or `0X` accepted)
-   which is the number of times to repeat the previous item.
+** A <<const-int,positive constant integer>> which is the number of
+   times to repeat the previous item.
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
@@ -1392,7 +1419,7 @@ is equivalent to ``(__ITEMS__){nbsp}pass:[*]{nbsp}__X__``.
 Input:
 
 ----
-!repeat 0x100
+!repeat 0o400
   {end - ICITTE - 1 : 8}
 !end
 
@@ -1577,7 +1604,7 @@ names of the definition of the chosen macro.
 A parameter value is one of:
 +
 --
-* A positive integer (hexadecimal starting with `0x` or `0X` accepted).
+* A <<const-int,constant integer>>, possibly negative.
 
 * The ``pass:[{]`` prefix, a valid {py3} expression of which the
   evaluation result type is `int` or `bool` (automatically converted to
