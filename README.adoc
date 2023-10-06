@@ -736,7 +736,7 @@ either:
 The available lengths are 8, 16, 24, 32, 40, 48, 56, and 64.
 
 * A floating point number
-  (IEEE{nbsp}754-2008[https://standards.ieee.org/standard/754-2008.html]).
+  (https://standards.ieee.org/standard/754-2008.html[IEEE{nbsp}754-2008]).
 +
 The available length are 32 (_binary32_) and 64 (_binary64_).
 
