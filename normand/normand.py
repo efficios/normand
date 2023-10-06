@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -38,6 +38,7 @@ __all__ = [
     "LabelsT",
     "parse",
     "ParseError",
+    "ParseErrorMessage",
     "ParseResult",
     "TextLocation",
     "VariablesT",
@@ -504,7 +505,33 @@ class _MacroExp(_Item, _RepableItem):
         )
 
 
-# A parsing error containing a message and a text location.
+# A parsing error message: a string and a text location.
+class ParseErrorMessage:
+    @classmethod
+    def _create(cls, text: str, text_loc: TextLocation):
+        self = cls.__new__(cls)
+        self._init(text, text_loc)
+        return self
+
+    def __init__(self, *args, **kwargs):  # type: ignore
+        raise NotImplementedError
+
+    def _init(self, text: str, text_loc: TextLocation):
+        self._text = text
+        self._text_loc = text_loc
+
+    # Message text.
+    @property
+    def text(self):
+        return self._text
+
+    # Source text location.
+    @property
+    def text_location(self):
+        return self._text_loc
+
+
+# A parsing error containing one or more messages (`ParseErrorMessage`).
 class ParseError(RuntimeError):
     @classmethod
     def _create(cls, msg: str, text_loc: TextLocation):
@@ -517,17 +544,38 @@ class ParseError(RuntimeError):
 
     def _init(self, msg: str, text_loc: TextLocation):
         super().__init__(msg)
-        self._text_loc = text_loc
+        self._msgs = []  # type: List[ParseErrorMessage]
+        self._add_msg(msg, text_loc)
 
-    # Source text location.
+    def _add_msg(self, msg: str, text_loc: TextLocation):
+        self._msgs.append(
+            ParseErrorMessage._create(  # pyright: ignore[reportPrivateUsage]
+                msg, text_loc
+            )
+        )
+
+    # Parsing error messages.
+    #
+    # The first message is the most specific one.
     @property
-    def text_loc(self):
-        return self._text_loc
+    def messages(self):
+        return self._msgs
 
 
 # Raises a parsing error, forwarding the parameters to the constructor.
 def _raise_error(msg: str, text_loc: TextLocation) -> NoReturn:
     raise ParseError._create(msg, text_loc)  # pyright: ignore[reportPrivateUsage]
+
+
+# Adds a message to the parsing error `exc`.
+def _add_error_msg(exc: ParseError, msg: str, text_loc: TextLocation):
+    exc._add_msg(msg, text_loc)  # pyright: ignore[reportPrivateUsage]
+
+
+# Appends a message to the parsing error `exc` and reraises it.
+def _augment_error(exc: ParseError, msg: str, text_loc: TextLocation) -> NoReturn:
+    _add_error_msg(exc, msg, text_loc)
+    raise exc
 
 
 # Variables dictionary type (for type hints).
@@ -1809,10 +1857,17 @@ class _GenState:
 
 # Fixed-length number item instance.
 class _FlNumItemInst:
-    def __init__(self, item: _FlNum, offset_in_data: int, state: _GenState):
+    def __init__(
+        self,
+        item: _FlNum,
+        offset_in_data: int,
+        state: _GenState,
+        parse_error_msgs: List[ParseErrorMessage],
+    ):
         self._item = item
         self._offset_in_data = offset_in_data
         self._state = state
+        self._parse_error_msgs = parse_error_msgs
 
     @property
     def item(self):
@@ -1825,6 +1880,10 @@ class _FlNumItemInst:
     @property
     def state(self):
         return self._state
+
+    @property
+    def parse_error_msgs(self):
+        return self._parse_error_msgs
 
 
 # Generator of data and final state from a group item.
@@ -1845,7 +1904,10 @@ class _FlNumItemInst:
 #    because the expression refers to a "future" label: save the current
 #    offset in `self._data` (generated data) and a snapshot of the
 #    current state within `self._fl_num_item_insts` (`_FlNumItemInst`
-#    object). _gen_fl_num_item_insts() will deal with this later.
+#    object). _gen_fl_num_item_insts() will deal with this later. A
+#    `_FlNumItemInst` instance also contains a snapshot of the current
+#    parsing error messages (`self._parse_error_msgs`) which need to be
+#    taken into account when handling the instance later.
 #
 #    When handling the items of a group, keep a map of immediate label
 #    names to their offset. Then, after having processed all the items,
@@ -1861,7 +1923,10 @@ class _FlNumItemInst:
 #    "future" labels from the point of view of some fixed-length number
 #    item instance.
 #
-#    If an evaluation fails at this point, then it's a user error.
+#    If an evaluation fails at this point, then it's a user error. Add
+#    to the parsing error all the saved parsing error messages of the
+#    instance. Those additional messages add precious context to the
+#    error.
 class _Gen:
     def __init__(
         self,
@@ -1874,6 +1939,7 @@ class _Gen:
     ):
         self._macro_defs = macro_defs
         self._fl_num_item_insts = []  # type: List[_FlNumItemInst]
+        self._parse_error_msgs = []  # type: List[ParseErrorMessage]
         self._gen(group, _GenState(variables, labels, offset, bo))
 
     # Generated bytes.
@@ -2010,7 +2076,12 @@ class _Gen:
             data = self._gen_fl_num_item_inst_data(item, state)
         except Exception:
             self._fl_num_item_insts.append(
-                _FlNumItemInst(item, len(self._data), copy.deepcopy(state))
+                _FlNumItemInst(
+                    item,
+                    len(self._data),
+                    copy.deepcopy(state),
+                    copy.deepcopy(self._parse_error_msgs),
+                )
             )
 
             # Reserve space in `self._data` for this instance
@@ -2136,12 +2207,24 @@ class _Gen:
 
     # Handles the macro expansion item `item`.
     def _handle_macro_exp_item(self, item: _MacroExp, state: _GenState):
-        # New state
-        exp_state = self._eval_macro_exp_params(item, state)
+        parse_error_msg_text = "While expanding the macro `{}`:".format(item.name)
 
-        # Process the contained group
-        init_data_size = len(self._data)
-        self._handle_item(self._macro_defs[item.name].group, exp_state)
+        try:
+            # New state
+            exp_state = self._eval_macro_exp_params(item, state)
+
+            # Process the contained group
+            init_data_size = len(self._data)
+            parse_error_msg = (
+                ParseErrorMessage._create(  # pyright: ignore[reportPrivateUsage]
+                    parse_error_msg_text, item.text_loc
+                )
+            )
+            self._parse_error_msgs.append(parse_error_msg)
+            self._handle_item(self._macro_defs[item.name].group, exp_state)
+            self._parse_error_msgs.pop()
+        except ParseError as exc:
+            _augment_error(exc, parse_error_msg_text, item.text_loc)
 
         # Update state offset and return
         state.offset += len(self._data) - init_data_size
@@ -2261,7 +2344,15 @@ class _Gen:
     def _gen_fl_num_item_insts(self):
         for inst in self._fl_num_item_insts:
             # Generate bytes
-            data = self._gen_fl_num_item_inst_data(inst.item, inst.state)
+            try:
+                data = self._gen_fl_num_item_inst_data(inst.item, inst.state)
+            except ParseError as exc:
+                # Add all the saved parse error messages for this
+                # instance.
+                for msg in reversed(inst.parse_error_msgs):
+                    _add_error_msg(exc, msg.text, msg.text_location)
+
+                raise
 
             # Insert bytes into `self._data`
             self._data[inst.offset_in_data : inst.offset_in_data + len(data)] = data
@@ -2346,7 +2437,38 @@ def parse(
     )
 
 
-# Parses the command-line arguments.
+# Raises a command-line error with the message `msg`.
+def _raise_cli_error(msg: str) -> NoReturn:
+    raise RuntimeError("Command-line error: {}".format(msg))
+
+
+# Returns a dictionary of string to integers from the list of strings
+# `args` containing `NAME=VAL` entries.
+def _dict_from_arg(args: Optional[List[str]]):
+    d = {}  # type: LabelsT
+
+    if args is None:
+        return d
+
+    for arg in args:
+        m = re.match(r"({})=(\d+)$".format(_py_name_pat.pattern), arg)
+
+        if m is None:
+            _raise_cli_error("Invalid assignment {}".format(arg))
+
+        d[m.group(1)] = int(m.group(2))
+
+    return d
+
+
+# Parses the command-line arguments and returns, in this order:
+#
+# 1. The input file path, or `None` if none.
+# 2. The Normand input text.
+# 3. The initial offset.
+# 4. The initial byte order.
+# 5. The initial variables.
+# 6. The initial labels.
 def _parse_cli_args():
     import argparse
 
@@ -2393,39 +2515,7 @@ def _parse_cli_args():
     )
 
     # Parse
-    return ap.parse_args()
-
-
-# Raises a command-line error with the message `msg`.
-def _raise_cli_error(msg: str) -> NoReturn:
-    raise RuntimeError("Command-line error: {}".format(msg))
-
-
-# Returns a dictionary of string to integers from the list of strings
-# `args` containing `NAME=VAL` entries.
-def _dict_from_arg(args: Optional[List[str]]):
-    d = {}  # type: LabelsT
-
-    if args is None:
-        return d
-
-    for arg in args:
-        m = re.match(r"({})=(\d+)$".format(_py_name_pat.pattern), arg)
-
-        if m is None:
-            _raise_cli_error("Invalid assignment {}".format(arg))
-
-        d[m.group(1)] = int(m.group(2))
-
-    return d
-
-
-# CLI entry point without exception handling.
-def _try_run_cli():
-    import os.path
-
-    # Parse arguments
-    args = _parse_cli_args()
+    args = ap.parse_args()
 
     # Read input
     if args.path is None:
@@ -2452,23 +2542,19 @@ def _try_run_cli():
             assert args.byte_order == "le"
             bo = ByteOrder.LE
 
-    # Parse
-    try:
-        res = parse(normand, variables, labels, args.offset, bo)
-    except ParseError as exc:
-        prefix = ""
+    # Return input and initial state
+    return args.path, normand, args.offset, bo, variables, labels
 
-        if args.path is not None:
-            prefix = "{}:".format(os.path.abspath(args.path))
 
-        _fail(
-            "{}{}:{} - {}".format(
-                prefix, exc.text_loc.line_no, exc.text_loc.col_no, str(exc)
-            )
-        )
-
-    # Print
-    sys.stdout.buffer.write(res.data)
+# CLI entry point without exception handling.
+def _run_cli_with_args(
+    normand: str,
+    offset: int,
+    bo: Optional[ByteOrder],
+    variables: VariablesT,
+    labels: LabelsT,
+):
+    sys.stdout.buffer.write(parse(normand, variables, labels, offset, bo).data)
 
 
 # Prints the exception message `msg` and exits with status 1.
@@ -2476,14 +2562,39 @@ def _fail(msg: str) -> NoReturn:
     if not msg.endswith("."):
         msg += "."
 
-    print(msg, file=sys.stderr)
+    print(msg.strip(), file=sys.stderr)
     sys.exit(1)
 
 
 # CLI entry point.
 def _run_cli():
     try:
-        _try_run_cli()
+        args = _parse_cli_args()
+    except Exception as exc:
+        _fail(str(exc))
+
+    try:
+        _run_cli_with_args(*args[1:])
+    except ParseError as exc:
+        import os.path
+
+        prefix = "" if args[0] is None else "{}:".format(os.path.abspath(args[0]))
+        fail_msg = ""
+
+        for msg in reversed(exc.messages):
+            fail_msg += "{}{}:{} - {}".format(
+                prefix,
+                msg.text_location.line_no,
+                msg.text_location.col_no,
+                msg.text,
+            )
+
+            if fail_msg[-1] not in ".:;":
+                fail_msg += "."
+
+            fail_msg += "\n"
+
+        _fail(fail_msg.strip())
     except Exception as exc:
         _fail(str(exc))
 

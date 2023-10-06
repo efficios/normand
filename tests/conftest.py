@@ -77,10 +77,14 @@ class _NormandTestItemFail(_NormandTestItem):
             normand.parse(normand_text)
 
         exc = exc_info.value
-        expected_msg = "{}:{} - {}".format(
-            exc.text_loc.line_no, exc.text_loc.col_no, str(exc)
-        )
-        assert output.strip() == expected_msg
+        expected_msg = ''
+
+        for msg in reversed(exc.messages):
+            expected_msg += "{}:{} - {}\n".format(
+                msg.text_location.line_no, msg.text_location.col_no, msg.text
+            )
+
+        assert output.strip() == expected_msg.strip()
 
 
 class _NormandTestItemPass(_NormandTestItem):

@@ -1,0 +1,16 @@
+!macro meow(yeah)
+  {yeah:8}
+!end
+
+!macro mix(yeah)
+  aa bb m:meow({yeah * 2})
+!end
+
+m:mix(12)
+"hello" m:mix(899)
+m:mix(16)
+m:mix(19)
+---
+10:9 - While expanding the macro `mix`:
+6:9 - While expanding the macro `meow`:
+2:4 - Value 1,798 is outside the 8-bit range when evaluating expression `yeah`

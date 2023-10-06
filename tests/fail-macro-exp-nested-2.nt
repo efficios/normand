@@ -1,0 +1,13 @@
+!macro meow()
+  {1993:8}
+!end
+
+!macro mix()
+  aa bb m:meow()
+!end
+
+"hello" m:mix()
+---
+9:9 - While expanding the macro `mix`:
+6:9 - While expanding the macro `meow`:
+2:4 - Value 1,993 is outside the 8-bit range when evaluating expression `1993`

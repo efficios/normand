@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.14, meaning both the Normand
+WARNING: This version of Normand is 0.15, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -344,6 +344,8 @@ Precise error reporting::
 ----
 +
 ----
+/tmp/meow.normand:32:19 - While expanding the macro `meow`:
+/tmp/meow.normand:35:5 - While expanding the macro `zzz`:
 /tmp/meow.normand:18:9 - Value 315 is outside the 8-bit range when evaluating expression `end - ICITTE`.
 ----
 
@@ -1887,11 +1889,26 @@ class TextLocation:
         ...
 
 
-# Parsing error.
-class ParseError(RuntimeError):
+# Parsing error message.
+class ParseErrorMessage:
+    # Message text.
+    @property
+    def text(self):
+        ...
+
     # Source text location.
     @property
-    def text_loc(self) -> TextLocation:
+    def text_location(self):
+        ...
+
+
+# Parsing error.
+class ParseError(RuntimeError):
+    # Parsing error messages.
+    #
+    # The first message is the most _specific_ one.
+    @property
+    def messages(self):
         ...
 
 
