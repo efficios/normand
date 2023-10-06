@@ -381,6 +381,77 @@ Python{nbsp}3.4, you'll need a local copy of the standard `typing`
 module.
 ====
 
+== Design goals
+
+The design goals of Normand are:
+
+Portability::
+    We're making sure `normand.py` works with Python{nbsp}≥{nbsp}3.4 and
+    doesn't have any external dependencies so that you may just copy the
+    module as is to your own project.
+
+Ease of use::
+    The most basic Normand input is a sequence of hexadecimal constants
+    (for example, `4e6f726d616e64`) which produce exactly what you'd
+    expect.
++
+Most Normand features map to programming language concepts you already
+know and understand: constant integers, literal strings, variables,
+conditionals, repetitions/loops, and the rest.
+
+Concise and readable input::
+    We could have chosen XML or YAML as the input format, but having a
+    DSL here makes a Normand input compact and easy to read, two
+    important traits when using Normand to write tests, for example.
++
+Compare the following Normand input and some hypothetical XML
+equivalent, for example:
++
+.Actual normand input.
+----
+ff dd 01 ab $192 $-128 %1101:0011
+
+{end:8}
+
+{iter = 1}
+
+!if {not something}
+  # five times because xyz
+  !repeat 5
+    "hello world " {iter:8}
+    {iter = iter + 1}
+  !end
+!end
+
+<end>
+----
++
+.Hypothetical Normand XML input.
+[source,xml]
+----
+<?xml version="1.0" encoding="utf-8" ?>
+<group>
+  <byte base="x" val="ff" />
+  <byte base="x" val="dd" />
+  <byte base="x" val="1" />
+  <byte base="x" val="ab" />
+  <byte base="d" val="192" />
+  <byte base="d" val="-128" />
+  <byte base="b" val="11010011" />
+  <fixed-len-num expr="end" len="8" />
+  <var-assign name="iter" expr="1" />
+  <cond expr="not something">
+    <!-- five times because xyz -->
+    <repeat expr="5">
+      <str>hello world </str>
+      <fixed-len-num expr="iter" len="8" />
+      <var-assign name="iter" expr="iter + 1" />
+    </repeat>
+  </cond>
+  <label name="end" />
+</group>
+----
+
 == Learn Normand
 
 A Normand text input is a sequence of items which represent a sequence
