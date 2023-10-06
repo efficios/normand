@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -727,27 +727,43 @@ class _Parser:
 
     # Patterns for _try_parse_bin_byte()
     _bin_byte_bit_pat = re.compile(r"[01]")
-    _bin_byte_prefix_pat = re.compile(r"%")
+    _bin_byte_prefix_pat = re.compile(r"%+")
 
     # Tries to parse a binary byte, returning a byte item on success.
     def _try_parse_bin_byte(self):
         begin_text_loc = self._text_loc
 
         # Match prefix
-        if self._try_parse_pat(self._bin_byte_prefix_pat) is None:
+        m = self._try_parse_pat(self._bin_byte_prefix_pat)
+
+        if m is None:
             # No match
             return
 
-        # Expect eight bits
-        bits = []  # type: List[str]
+        # Expect as many bytes as there are `%` prefixes
+        items = []  # type: List[_Item]
 
-        for _ in range(8):
+        for _ in range(len(m.group(0))):
             self._skip_ws_and_comments()
-            m = self._expect_pat(self._bin_byte_bit_pat, "Expecting a bit (`0` or `1`)")
-            bits.append(m.group(0))
+            byte_text_loc = self._text_loc
+            bits = []  # type: List[str]
+
+            # Expect eight bits
+            for _ in range(8):
+                self._skip_ws_and_comments()
+                m = self._expect_pat(
+                    self._bin_byte_bit_pat, "Expecting a bit (`0` or `1`)"
+                )
+                bits.append(m.group(0))
+
+            items.append(_Byte(int("".join(bits), 2), byte_text_loc))
 
         # Return item
-        return _Byte(int("".join(bits), 2), begin_text_loc)
+        if len(items) == 1:
+            return items[0]
+
+        # As group
+        return _Group(items, begin_text_loc)
 
     # Patterns for _try_parse_dec_byte()
     _dec_byte_prefix_pat = re.compile(r"\$")
@@ -1548,7 +1564,8 @@ class _Parser:
             param_text_loc = self._text_loc
             params.append(
                 _MacroExpParam(
-                    *self._expect_const_int_name_expr(True, True), param_text_loc
+                    *self._expect_const_int_name_expr(True, True),
+                    text_loc=param_text_loc
                 )
             )
             expect_comma = True
@@ -1664,7 +1681,7 @@ class _Parser:
             rep_ret = self._try_parse_rep_post()
 
             if rep_ret is not None:
-                item = _Rep(item, *rep_ret, rep_text_loc)
+                item = _Rep(item, *rep_ret, text_loc=rep_text_loc)
 
         items.append(item)
         return True

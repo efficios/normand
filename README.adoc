@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.15, meaning both the Normand
+WARNING: This version of Normand is 0.16, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -507,7 +507,8 @@ the current byte order.
 
 The available items are:
 
-* A <<byte-constant,constant integer>> representing a single byte.
+* A <<byte-constant,constant integer>> representing one or more
+  constant bytes.
 
 * A <<literal-string,literal string>> representing a sequence of bytes
   encoding UTF-8, UTF-16, or UTF-32 data.
@@ -614,18 +615,25 @@ where `file` is the name of a file containing the Normand input.
 
 === Byte constant
 
-A _byte constant_ represents a single byte.
+A _byte constant_ represents one or more constant bytes.
 
 A byte constant is:
 
 Hexadecimal form::
-    Two consecutive hexadecimal digits.
+    Two consecutive hexadecimal digits representing a single byte.
 
 Decimal form::
-    One or more digits after the `$` prefix.
+    One or more digits after the `$` prefix representing a single byte.
 
-Binary form::
-    Eight bits after the `%` prefix.
+Binary form:: {empty}
++
+--
+. __**N**__ `%` prefixes (at least one).
++
+The number of `%` characters is the number of subsequent expected bytes.
+
+. __**N**__{nbsp}×{nbsp}8 bits (`0` or `1`).
+--
 
 ====
 Input:
@@ -676,12 +684,13 @@ Input:
 
 ----
 %01110011 %01100001 %01101100 %01110101 %01110100
+%%%1101:0010 11111111 #A#11 #B#00 #C#011 #D#1
 ----
 
 Output:
 
 ----
-73 61 6c 75 74  ┆ salut
+73 61 6c 75 74 d2 ff c7  ┆ salut•••
 ----
 ====
 
