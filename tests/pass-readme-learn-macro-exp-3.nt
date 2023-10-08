@@ -1,0 +1,7 @@
+!macro flt32be(val) {be} {val : 32} !end
+
+"CHEETOS"
+m:flt32be(-42.17)
+m:flt32be(56.23e-4)
+---
+43 48 45 45 54 4f 53 c2 28 ae 14 3b b8 41 25

@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.16, meaning both the Normand
+WARNING: This version of Normand is 0.17, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -1700,6 +1700,8 @@ A parameter value is one of:
 --
 * A <<const-int,constant integer>>, possibly negative.
 
+* A constant floating point number.
+
 * The ``pass:[{]`` prefix, a valid {py3} expression of which the
   evaluation result type is `int` or `bool` (automatically converted to
   `int`), and the ``pass:[}]`` suffix.
@@ -1789,6 +1791,24 @@ Output:
 
 ----
 00 03 00 06 00 09 00 0c  00 0f 03 00 06 00 09 00
+----
+====
+
+====
+Input:
+
+----
+!macro flt32be(val) {be} {val : 32} !end
+
+"CHEETOS"
+m:flt32be(-42.17)
+m:flt32be(56.23e-4)
+----
+
+Output:
+
+----
+43 48 45 45 54 4f 53 c2  28 ae 14 3b b8 41 25     ┆ CHEETOS•(••;•A%
 ----
 ====
 

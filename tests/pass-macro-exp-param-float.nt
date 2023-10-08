@@ -1,0 +1,19 @@
+!macro salut(a, b, c)
+  "meow" {b : 32}
+!end
+
+{be}
+aa bb
+m:salut(42, 45.12, 12)
+m:salut(42, -12.34e9, 12)
+ff
+---
+aa bb
+
+6d 65 6f 77
+42 34 7a e1
+
+6d 65 6f 77
+d0 37 e1 5d
+
+ff

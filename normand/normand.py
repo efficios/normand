@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -1106,7 +1106,7 @@ class _Parser:
 
     # Common constant integer patterns
     _pos_const_int_pat = re.compile(
-        r"0[Xx][A-Fa-f0-9]+|0[Oo][0-7]+|0[Bb][01]+|[A-Fa-f0-9]+[hH]|[0-7]+[qQoO]|[01]+[bB]|\d+"
+        r"(?:0[Xx][A-Fa-f0-9]+|0[Oo][0-7]+|0[Bb][01]+|[A-Fa-f0-9]+[hH]|[0-7]+[qQoO]|[01]+[bB]|\d+)\b"
     )
     _const_int_pat = re.compile(r"(?P<neg>-)?(?:{})".format(_pos_const_int_pat.pattern))
 
@@ -1254,6 +1254,99 @@ class _Parser:
         # Return item
         return _AlignOffset(val, pad_val, begin_text_loc)
 
+    # Patterns for _expect_expr()
+    _inner_expr_prefix_pat = re.compile(r"\{")
+    _inner_expr_pat = re.compile(r"[^}]+")
+    _inner_expr_suffix_pat = re.compile(r"\}")
+    _const_float_pat = re.compile(
+        r"[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?\b"
+    )
+
+    # Parses an expression outside a `{`/`}` context.
+    #
+    # This function accepts:
+    #
+    # • A Python expression within `{` and `}`.
+    #
+    # • A Python name.
+    #
+    # • If `accept_const_int` is `True`: a constant integer, which may
+    #   be negative if `allow_neg_int` is `True`.
+    #
+    # • If `accept_float` is `True`: a constant floating point number.
+    #
+    # Returns the stripped expression string and AST expression.
+    def _expect_expr(
+        self,
+        accept_const_int: bool = False,
+        allow_neg_int: bool = False,
+        accept_const_float: bool = False,
+    ):
+        begin_text_loc = self._text_loc
+
+        # Constant floating point number?
+        m = None
+
+        if accept_const_float:
+            m = self._try_parse_pat(self._const_float_pat)
+
+            if m is not None:
+                return self._ast_expr_from_str(m.group(0), begin_text_loc)
+
+        # Constant integer?
+        m = None
+
+        if accept_const_int:
+            m = self._try_parse_pat(self._const_int_pat)
+
+            if m is not None:
+                # Negative and allowed?
+                if m.group("neg") == "-" and not allow_neg_int:
+                    _raise_error(
+                        "Expecting a positive constant integer", begin_text_loc
+                    )
+
+                expr_str = self._norm_const_int(m.group(0))
+                return self._ast_expr_from_str(expr_str, begin_text_loc)
+
+        # Name?
+        m = self._try_parse_pat(_py_name_pat)
+
+        if m is not None:
+            return self._ast_expr_from_str(m.group(0), begin_text_loc)
+
+        # Expect `{`
+        msg_accepted_parts = ["a name", "or `{`"]
+
+        if accept_const_float:
+            msg_accepted_parts.insert(0, "a constant floating point number")
+
+        if accept_const_int:
+            msg_pos = "" if allow_neg_int else "positive "
+            msg_accepted_parts.insert(0, "a {}constant integer".format(msg_pos))
+
+        if len(msg_accepted_parts) == 2:
+            msg_accepted = " ".join(msg_accepted_parts)
+        else:
+            msg_accepted = ", ".join(msg_accepted_parts)
+
+        self._expect_pat(
+            self._inner_expr_prefix_pat,
+            "Expecting {}".format(msg_accepted),
+        )
+
+        # Expect an expression
+        self._skip_ws()
+        expr_text_loc = self._text_loc
+        m = self._expect_pat(self._inner_expr_pat, "Expecting an expression")
+        expr_str = m.group(0)
+
+        # Expect `}`
+        self._skip_ws()
+        self._expect_pat(self._inner_expr_suffix_pat, "Expecting `}`")
+
+        return self._ast_expr_from_str(expr_str, expr_text_loc)
+
     # Patterns for _try_parse_fill_until()
     _fill_until_prefix_pat = re.compile(r"\+")
     _fill_until_pad_val_prefix_pat = re.compile(r"~")
@@ -1269,7 +1362,7 @@ class _Parser:
 
         # Expect expression
         self._skip_ws()
-        expr_str, expr = self._expect_const_int_name_expr(True)
+        expr_str, expr = self._expect_expr(accept_const_int=True)
 
         # Padding value
         pad_val = self._parse_pad_val()
@@ -1277,67 +1370,10 @@ class _Parser:
         # Return item
         return _FillUntil(expr_str, expr, pad_val, begin_text_loc)
 
-    # Patterns for _expect_rep_mul_expr()
-    _inner_expr_prefix_pat = re.compile(r"\{")
-    _inner_expr_pat = re.compile(r"[^}]+")
-    _inner_expr_suffix_pat = re.compile(r"\}")
-
-    # Parses a constant integer if `accept_const_int` is `True`
-    # (possibly negative if `allow_neg` is `True`), a name, or an
-    # expression within `{` and `}`.
-    def _expect_const_int_name_expr(
-        self, accept_const_int: bool, allow_neg: bool = False
-    ):
-        expr_text_loc = self._text_loc
-
-        # Constant integer?
-        m = None
-
-        if accept_const_int:
-            m = self._try_parse_pat(self._const_int_pat)
-
-        if m is None:
-            # Name?
-            m = self._try_parse_pat(_py_name_pat)
-
-            if m is None:
-                # Expression?
-                if self._try_parse_pat(self._inner_expr_prefix_pat) is None:
-                    pos_msg = "" if allow_neg else "positive "
-
-                    if accept_const_int:
-                        mid_msg = "a {}constant integer, a name, or `{{`".format(
-                            pos_msg
-                        )
-                    else:
-                        mid_msg = "a name or `{`"
-
-                    # At this point it's invalid
-                    self._raise_error("Expecting {}".format(mid_msg))
-
-                # Expect an expression
-                self._skip_ws()
-                expr_text_loc = self._text_loc
-                m = self._expect_pat(self._inner_expr_pat, "Expecting an expression")
-                expr_str = m.group(0)
-
-                # Expect `}`
-                self._skip_ws()
-                self._expect_pat(self._inner_expr_suffix_pat, "Expecting `}`")
-            else:
-                expr_str = m.group(0)
-        else:
-            if m.group("neg") == "-" and not allow_neg:
-                _raise_error("Expecting a positive constant integer", expr_text_loc)
-
-            expr_str = self._norm_const_int(m.group(0))
-
-        return self._ast_expr_from_str(expr_str, expr_text_loc)
-
     # Parses the multiplier expression of a repetition (block or
     # post-item) and returns the expression string and AST node.
     def _expect_rep_mul_expr(self):
-        return self._expect_const_int_name_expr(True)
+        return self._expect_expr(accept_const_int=True)
 
     # Common block end pattern
     _block_end_pat = re.compile(r"!end\b")
@@ -1389,7 +1425,7 @@ class _Parser:
 
         # Expect expression
         self._skip_ws_and_comments()
-        expr_str, expr = self._expect_const_int_name_expr(False)
+        expr_str, expr = self._expect_expr()
 
         # Parse "true" items
         self._skip_ws_and_comments()
@@ -1564,7 +1600,11 @@ class _Parser:
             param_text_loc = self._text_loc
             params.append(
                 _MacroExpParam(
-                    *self._expect_const_int_name_expr(True, True),
+                    *self._expect_expr(
+                        accept_const_int=True,
+                        allow_neg_int=True,
+                        accept_const_float=True,
+                    ),
                     text_loc=param_text_loc
                 )
             )
