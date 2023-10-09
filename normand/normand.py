@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -578,6 +578,41 @@ def _augment_error(exc: ParseError, msg: str, text_loc: TextLocation) -> NoRetur
     raise exc
 
 
+# Returns a normalized version (so as to be parseable by int()) of
+# the constant integer string `s`, possibly negative, dealing with
+# any radix suffix.
+def _norm_const_int(s: str):
+    neg = ""
+    pos = s
+
+    if s.startswith("-"):
+        neg = "-"
+        pos = s[1:]
+
+    for r in "xXoObB":
+        if pos.startswith("0" + r):
+            # Already correct
+            return s
+
+    # Try suffix
+    asm_suf_base = {
+        "h": "x",
+        "H": "x",
+        "q": "o",
+        "Q": "o",
+        "o": "o",
+        "O": "o",
+        "b": "b",
+        "B": "B",
+    }
+
+    for suf in asm_suf_base:
+        if pos[-1] == suf:
+            s = "{}0{}{}".format(neg, asm_suf_base[suf], pos.rstrip(suf))
+
+    return s
+
+
 # Variables dictionary type (for type hints).
 VariablesT = Dict[str, Union[int, float]]
 
@@ -586,8 +621,15 @@ VariablesT = Dict[str, Union[int, float]]
 LabelsT = Dict[str, int]
 
 
-# Python name pattern.
+# Common patterns.
 _py_name_pat = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+_pos_const_int_pat = re.compile(
+    r"(?:0[Xx][A-Fa-f0-9]+|0[Oo][0-7]+|0[Bb][01]+|[A-Fa-f0-9]+[hH]|[0-7]+[qQoO]|[01]+[bB]|\d+)\b"
+)
+_const_int_pat = re.compile(r"(?P<neg>-)?(?:{})".format(_pos_const_int_pat.pattern))
+_const_float_pat = re.compile(
+    r"[-+]?(?:(?:\d*\.\d+)|(?:\d+\.))(?:[Ee][+-]?\d+)?(?=\W|)"
+)
 
 
 # Macro definition dictionary.
@@ -1069,61 +1111,20 @@ class _Parser:
         self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
         return item
 
-    # Returns a normalized version (so as to be parseable by int()) of
-    # the constant integer string `s`, possibly negative, dealing with
-    # any radix suffix.
-    @staticmethod
-    def _norm_const_int(s: str):
-        neg = ""
-        pos = s
-
-        if s.startswith("-"):
-            neg = "-"
-            pos = s[1:]
-
-        for r in "xXoObB":
-            if pos.startswith("0" + r):
-                # Already correct
-                return s
-
-        # Try suffix
-        asm_suf_base = {
-            "h": "x",
-            "H": "x",
-            "q": "o",
-            "Q": "o",
-            "o": "o",
-            "O": "o",
-            "b": "b",
-            "B": "B",
-        }
-
-        for suf in asm_suf_base:
-            if pos[-1] == suf:
-                s = "{}0{}{}".format(neg, asm_suf_base[suf], pos.rstrip(suf))
-
-        return s
-
-    # Common constant integer patterns
-    _pos_const_int_pat = re.compile(
-        r"(?:0[Xx][A-Fa-f0-9]+|0[Oo][0-7]+|0[Bb][01]+|[A-Fa-f0-9]+[hH]|[0-7]+[qQoO]|[01]+[bB]|\d+)\b"
-    )
-    _const_int_pat = re.compile(r"(?P<neg>-)?(?:{})".format(_pos_const_int_pat.pattern))
-
     # Tries to parse an offset setting value (after the initial `<`),
     # returning an offset item on success.
     def _try_parse_set_offset_val(self):
         begin_text_loc = self._text_loc
 
         # Match
-        m = self._try_parse_pat(self._pos_const_int_pat)
+        m = self._try_parse_pat(_pos_const_int_pat)
 
         if m is None:
             # No match
             return
 
         # Return item
-        return _SetOffset(int(self._norm_const_int(m.group(0)), 0), begin_text_loc)
+        return _SetOffset(int(_norm_const_int(m.group(0)), 0), begin_text_loc)
 
     # Tries to parse a label name (after the initial `<`), returning a
     # label item on success.
@@ -1200,12 +1201,12 @@ class _Parser:
             self._skip_ws()
             pad_val_text_loc = self._text_loc
             m = self._expect_pat(
-                self._pos_const_int_pat,
+                _pos_const_int_pat,
                 "Expecting a positive constant integer (byte value)",
             )
 
             # Validate
-            pad_val = int(self._norm_const_int(m.group(0)), 0)
+            pad_val = int(_norm_const_int(m.group(0)), 0)
 
             if pad_val > 255:
                 _raise_error(
@@ -1258,9 +1259,6 @@ class _Parser:
     _inner_expr_prefix_pat = re.compile(r"\{")
     _inner_expr_pat = re.compile(r"[^}]+")
     _inner_expr_suffix_pat = re.compile(r"\}")
-    _const_float_pat = re.compile(
-        r"[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?\b"
-    )
 
     # Parses an expression outside a `{`/`}` context.
     #
@@ -1285,19 +1283,15 @@ class _Parser:
         begin_text_loc = self._text_loc
 
         # Constant floating point number?
-        m = None
-
         if accept_const_float:
-            m = self._try_parse_pat(self._const_float_pat)
+            m = self._try_parse_pat(_const_float_pat)
 
             if m is not None:
                 return self._ast_expr_from_str(m.group(0), begin_text_loc)
 
         # Constant integer?
-        m = None
-
         if accept_const_int:
-            m = self._try_parse_pat(self._const_int_pat)
+            m = self._try_parse_pat(_const_int_pat)
 
             if m is not None:
                 # Negative and allowed?
@@ -1306,7 +1300,7 @@ class _Parser:
                         "Expecting a positive constant integer", begin_text_loc
                     )
 
-                expr_str = self._norm_const_int(m.group(0))
+                expr_str = _norm_const_int(m.group(0))
                 return self._ast_expr_from_str(expr_str, begin_text_loc)
 
         # Name?
@@ -2499,21 +2493,42 @@ def _raise_cli_error(msg: str) -> NoReturn:
     raise RuntimeError("Command-line error: {}".format(msg))
 
 
-# Returns a dictionary of string to integers from the list of strings
+# Returns the `int` or `float` value out of a CLI assignment value.
+def _val_from_assign_val_str(s: str, is_label: bool):
+    s = s.strip()
+
+    # Floating point number?
+    if not is_label:
+        m = _const_float_pat.fullmatch(s)
+
+        if m is not None:
+            return float(m.group(0))
+
+    # Integer?
+    m = _const_int_pat.fullmatch(s)
+
+    if m is not None:
+        return int(_norm_const_int(m.group(0)), 0)
+
+    exp = "an integer" if is_label else "a number"
+    _raise_cli_error("Invalid assignment value `{}`: expecting {}".format(s, exp))
+
+
+# Returns a dictionary of string to numbers from the list of strings
 # `args` containing `NAME=VAL` entries.
-def _dict_from_arg(args: Optional[List[str]]):
-    d = {}  # type: LabelsT
+def _dict_from_arg(args: Optional[List[str]], is_label: bool):
+    d = {}  # type: VariablesT
 
     if args is None:
         return d
 
     for arg in args:
-        m = re.match(r"({})=(\d+)$".format(_py_name_pat.pattern), arg)
+        m = re.match(r"({})\s*=\s*(.+)$".format(_py_name_pat.pattern), arg)
 
         if m is None:
-            _raise_cli_error("Invalid assignment {}".format(arg))
+            _raise_cli_error("Invalid assignment `{}`".format(arg))
 
-        d[m.group(1)] = int(m.group(2))
+        d[m.group(1)] = _val_from_assign_val_str(m.group(2), is_label)
 
     return d
 
@@ -2548,6 +2563,7 @@ def _parse_cli_args():
         help="initial byte order (`be` or `le`)",
     )
     ap.add_argument(
+        "-v",
         "--var",
         metavar="NAME=VAL",
         action="append",
@@ -2582,8 +2598,8 @@ def _parse_cli_args():
             normand = f.read()
 
     # Variables and labels
-    variables = typing.cast(VariablesT, _dict_from_arg(args.var))
-    labels = _dict_from_arg(args.label)
+    variables = _dict_from_arg(args.var, False)
+    labels = _dict_from_arg(args.label, True)
 
     # Validate offset
     if args.offset < 0:
@@ -2600,7 +2616,7 @@ def _parse_cli_args():
             bo = ByteOrder.LE
 
     # Return input and initial state
-    return args.path, normand, args.offset, bo, variables, labels
+    return args.path, normand, args.offset, bo, variables, typing.cast(LabelsT, labels)
 
 
 # CLI entry point without exception handling.
