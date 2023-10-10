@@ -1,0 +1,3 @@
+s:latin3 {"hello " 23}
+---
+1:11 - Invalid expression `"hello " 23`: invalid syntax

@@ -1,0 +1,3 @@
+{"a string" : s:u}
+---
+1:18 - Expecting `8`, `16be`, `16le`, `32be` or `32le`

@@ -1,0 +1,5 @@
+{meow = 'légiférer'}
+
+u8{meow.upper()}
+---
+4c c3 89 47 49 46 c3 89 52 45 52

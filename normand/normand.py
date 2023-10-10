@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.18.0"
+__version__ = "0.19.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -129,8 +129,8 @@ class _Byte(_ScalarItem, _RepableItem):
         return "_Byte({}, {})".format(hex(self._val), repr(self._text_loc))
 
 
-# String.
-class _Str(_ScalarItem, _RepableItem):
+# Literal string.
+class _LitStr(_ScalarItem, _RepableItem):
     def __init__(self, data: bytes, text_loc: TextLocation):
         super().__init__(text_loc)
         self._data = data
@@ -145,7 +145,7 @@ class _Str(_ScalarItem, _RepableItem):
         return len(self._data)
 
     def __repr__(self):
-        return "_Str({}, {})".format(repr(self._data), repr(self._text_loc))
+        return "_LitStr({}, {})".format(repr(self._data), repr(self._text_loc))
 
 
 # Byte order.
@@ -338,6 +338,30 @@ class _ULeb128Int(_Leb128Int, _RepableItem, _ExprMixin):
 # Signed LEB128 integer.
 class _SLeb128Int(_Leb128Int, _RepableItem, _ExprMixin):
     pass
+
+
+# String.
+class _Str(_Item, _RepableItem, _ExprMixin):
+    def __init__(
+        self, expr_str: str, expr: ast.Expression, codec: str, text_loc: TextLocation
+    ):
+        super().__init__(text_loc)
+        _ExprMixin.__init__(self, expr_str, expr)
+        self._codec = codec
+
+    # Codec name.
+    @property
+    def codec(self):
+        return self._codec
+
+    def __repr__(self):
+        return "_Str({}, {}, {}, {})".format(
+            self.__class__.__name__,
+            repr(self._expr_str),
+            repr(self._expr),
+            repr(self._codec),
+            repr(self._text_loc),
+        )
 
 
 # Group of items.
@@ -613,8 +637,19 @@ def _norm_const_int(s: str):
     return s
 
 
+# Encodes the string `s` using the codec `codec`, raising `ParseError`
+# with `text_loc` on encoding error.
+def _encode_str(s: str, codec: str, text_loc: TextLocation):
+    try:
+        return s.encode(codec)
+    except UnicodeEncodeError:
+        _raise_error(
+            "Cannot encode `{}` with the `{}` encoding".format(s, codec), text_loc
+        )
+
+
 # Variables dictionary type (for type hints).
-VariablesT = Dict[str, Union[int, float]]
+VariablesT = Dict[str, Union[int, float, str]]
 
 
 # Labels dictionary type (for type hints).
@@ -857,13 +892,8 @@ class _Parser:
         if item is not None:
             return item
 
-    # Patterns for _try_parse_str()
-    _str_prefix_pat = re.compile(r'(?:u(?P<len>16|32)(?P<bo>be|le))?\s*"')
-    _str_suffix_pat = re.compile(r'"')
-    _str_str_pat = re.compile(r'(?:(?:\\.)|[^"])*')
-
     # Strings corresponding to escape sequence characters
-    _str_escape_seq_strs = {
+    _lit_str_escape_seq_strs = {
         "0": "\0",
         "a": "\a",
         "b": "\b",
@@ -877,40 +907,157 @@ class _Parser:
         '"': '"',
     }
 
-    # Tries to parse a string, returning a string item on success.
-    def _try_parse_str(self):
-        begin_text_loc = self._text_loc
+    # Patterns for _try_parse_lit_str()
+    _lit_str_prefix_suffix_pat = re.compile(r'"')
+    _lit_str_contents_pat = re.compile(r'(?:(?:\\.)|[^"])*')
 
-        # Match prefix
-        m = self._try_parse_pat(self._str_prefix_pat)
+    # Parses a literal string between double quotes (without an encoding
+    # prefix) and returns the resulting string.
+    def _try_parse_lit_str(self, with_prefix: bool):
+        # Match prefix if needed
+        if with_prefix:
+            if self._try_parse_pat(self._lit_str_prefix_suffix_pat) is None:
+                # No match
+                return
 
-        if m is None:
-            # No match
-            return
-
-        # Get encoding
-        encoding = "utf8"
-
-        if m.group("len") is not None:
-            encoding = "utf_{}_{}".format(m.group("len"), m.group("bo"))
-
-        # Actual string
-        m = self._expect_pat(self._str_str_pat, "Expecting a literal string")
+        # Expect literal string
+        m = self._expect_pat(self._lit_str_contents_pat, "Expecting a literal string")
 
         # Expect end of string
-        self._expect_pat(self._str_suffix_pat, 'Expecting `"` (end of literal string)')
+        self._expect_pat(
+            self._lit_str_prefix_suffix_pat, 'Expecting `"` (end of literal string)'
+        )
 
         # Replace escape sequences
         val = m.group(0)
 
         for ec in '0abefnrtv"\\':
-            val = val.replace(r"\{}".format(ec), self._str_escape_seq_strs[ec])
+            val = val.replace(r"\{}".format(ec), self._lit_str_escape_seq_strs[ec])
 
-        # Encode
-        data = val.encode(encoding)
+        # Return string
+        return val
 
-        # Return item
-        return _Str(data, begin_text_loc)
+    # Patterns for _try_parse_utf_str_encoding()
+    _str_encoding_utf_prefix_pat = re.compile(r"u")
+    _str_encoding_utf_pat = re.compile(r"(?:8|(?:(?:16|32)(?:[bl]e)))\b")
+
+    # Tries to parse a UTF encoding specification, returning the Python
+    # codec name on success.
+    def _try_parse_utf_str_encoding(self):
+        # Match prefix
+        if self._try_parse_pat(self._str_encoding_utf_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect UTF specification
+        m = self._expect_pat(
+            self._str_encoding_utf_pat,
+            "Expecting `8`, `16be`, `16le`, `32be` or `32le`",
+        )
+
+        # Convert to codec name
+        return {
+            "8": "utf_8",
+            "16be": "utf_16_be",
+            "16le": "utf_16_le",
+            "32be": "utf_32_be",
+            "32le": "utf_32_le",
+        }[m.group(0)]
+
+    # Patterns for _try_parse_str_encoding()
+    _str_encoding_gen_prefix_pat = re.compile(r"s")
+    _str_encoding_colon_pat = re.compile(r":")
+    _str_encoding_non_utf_pat = re.compile(r"latin(?:[1-9]|10)\b")
+
+    # Tries to parse a string encoding specification, returning the
+    # Python codec name on success.
+    #
+    # Requires the general prefix (`s:`) if `req_gen_prefix` is `True`.
+    def _try_parse_str_encoding(self, req_gen_prefix: bool = False):
+        # General prefix?
+        if self._try_parse_pat(self._str_encoding_gen_prefix_pat) is not None:
+            # Expect `:`
+            self._skip_ws()
+            self._expect_pat(self._str_encoding_colon_pat, "Expecting `:`")
+
+            # Expect encoding specification
+            self._skip_ws()
+
+            # UTF?
+            codec = self._try_parse_utf_str_encoding()
+
+            if codec is not None:
+                return codec
+
+            # Expect Latin
+            m = self._expect_pat(
+                self._str_encoding_non_utf_pat,
+                "Expecting `u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`",
+            )
+            return m.group(0)
+
+        # UTF?
+        if not req_gen_prefix:
+            return self._try_parse_utf_str_encoding()
+
+    # Patterns for _try_parse_str()
+    _lit_str_prefix_pat = re.compile(r'"')
+    _str_prefix_pat = re.compile(r'"|\{')
+    _str_expr_pat = re.compile(r"[^}]+")
+    _str_expr_suffix_pat = re.compile(r"\}")
+
+    # Tries to parse a string, returning a literal string or string item
+    # on success.
+    def _try_parse_str(self):
+        begin_text_loc = self._text_loc
+
+        # Encoding
+        codec = self._try_parse_str_encoding()
+
+        # Match prefix (expect if there's an encoding specification)
+        self._skip_ws()
+
+        if codec is None:
+            # No encoding: only a literal string (UTF-8) is legal
+            m_prefix = self._try_parse_pat(self._lit_str_prefix_pat)
+
+            if m_prefix is None:
+                return
+        else:
+            # Encoding present: expect a string prefix
+            m_prefix = self._expect_pat(self._str_prefix_pat, 'Expecting `"` or `{`')
+
+        # Literal string or expression?
+        prefix = m_prefix.group(0)
+
+        if prefix == '"':
+            # Expect literal string
+            str_text_loc = self._text_loc
+            val = self._try_parse_lit_str(False)
+
+            if val is None:
+                self._raise_error("Expecting a literal string")
+
+            # Encode string
+            data = _encode_str(val, "utf_8" if codec is None else codec, str_text_loc)
+
+            # Return item
+            return _LitStr(data, begin_text_loc)
+        else:
+            # Expect expression
+            self._skip_ws()
+            expr_text_loc = self._text_loc
+            m = self._expect_pat(self._str_expr_pat, "Expecting an expression")
+
+            # Expect `}`
+            self._expect_pat(self._str_expr_suffix_pat, "Expecting `}`")
+
+            # Create an expression node from the expression string
+            expr_str, expr = self._ast_expr_from_str(m.group(0), expr_text_loc)
+
+            # Return item
+            assert codec is not None
+            return _Str(expr_str, expr, codec, begin_text_loc)
 
     # Common right parenthesis pattern
     _right_paren_pat = re.compile(r"\)")
@@ -963,14 +1110,15 @@ class _Parser:
 
         return expr_str, expr
 
-    # Patterns for _try_parse_num_and_attr()
+    # Patterns for _try_parse_val()
     _val_expr_pat = re.compile(r"([^}:]+):\s*")
-    _fl_num_len_attr_pat = re.compile(r"8|16|24|32|40|48|56|64")
-    _leb128_int_attr_pat = re.compile(r"(u|s)leb128")
+    _fl_num_len_fmt_pat = re.compile(r"8|16|24|32|40|48|56|64")
+    _leb128_int_fmt_pat = re.compile(r"(u|s)leb128")
 
-    # Tries to parse a value and attribute (fixed length in bits or
-    # `leb128`), returning a value item on success.
-    def _try_parse_num_and_attr(self):
+    # Tries to parse a value (number or string) and format (fixed length
+    # in bits, `uleb128`, `sleb128`, or `s:` followed with an encoding
+    # name), returning an item on success.
+    def _try_parse_val(self):
         begin_text_loc = self._text_loc
 
         # Match
@@ -983,33 +1131,42 @@ class _Parser:
         # Create an expression node from the expression string
         expr_str, expr = self._ast_expr_from_str(m_expr.group(1), begin_text_loc)
 
-        # Length?
-        m_attr = self._try_parse_pat(self._fl_num_len_attr_pat)
+        # Fixed length?
+        m_fmt = self._try_parse_pat(self._fl_num_len_fmt_pat)
 
-        if m_attr is None:
+        if m_fmt is None:
             # LEB128?
-            m_attr = self._try_parse_pat(self._leb128_int_attr_pat)
+            m_fmt = self._try_parse_pat(self._leb128_int_fmt_pat)
 
-            if m_attr is None:
-                # At this point it's invalid
-                self._raise_error(
-                    "Expecting a length (multiple of eight bits), `uleb128`, or `sleb128`"
-                )
+            if m_fmt is None:
+                # String encoding?
+                codec = self._try_parse_str_encoding(True)
+
+                if codec is None:
+                    # At this point it's invalid
+                    self._raise_error(
+                        "Expecting a fixed length (multiple of eight bits), `uleb128`, `sleb128`, or `s:` followed with a valid encoding (`u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`)"
+                    )
+                else:
+                    # Return string item
+                    return _Str(expr_str, expr, codec, begin_text_loc)
 
             # Return LEB128 integer item
-            cls = _ULeb128Int if m_attr.group(1) == "u" else _SLeb128Int
+            cls = _ULeb128Int if m_fmt.group(1) == "u" else _SLeb128Int
             return cls(expr_str, expr, begin_text_loc)
         else:
             # Return fixed-length number item
             return _FlNum(
                 expr_str,
                 expr,
-                int(m_attr.group(0)),
+                int(m_fmt.group(0)),
                 begin_text_loc,
             )
 
     # Patterns for _try_parse_var_assign()
-    _var_assign_name_equal_pat = re.compile(r"({})\s*=".format(_py_name_pat.pattern))
+    _var_assign_name_equal_pat = re.compile(
+        r"({})\s*=(?!=)".format(_py_name_pat.pattern)
+    )
     _var_assign_expr_pat = re.compile(r"[^}]+")
 
     # Tries to parse a variable assignment, returning a variable
@@ -1093,8 +1250,8 @@ class _Parser:
         item = self._try_parse_var_assign()
 
         if item is None:
-            # Number item?
-            item = self._try_parse_num_and_attr()
+            # Value item?
+            item = self._try_parse_val()
 
             if item is None:
                 # Byte order setting item?
@@ -1103,7 +1260,7 @@ class _Parser:
                 if item is None:
                     # At this point it's invalid
                     self._raise_error(
-                        "Expecting a fixed-length number, a variable assignment, or a byte order setting"
+                        "Expecting a fixed-length number, a string, a variable assignment, or a byte order setting"
                     )
 
         # Expect suffix
@@ -1279,6 +1436,7 @@ class _Parser:
         accept_const_int: bool = False,
         allow_neg_int: bool = False,
         accept_const_float: bool = False,
+        accept_lit_str: bool = False,
     ):
         begin_text_loc = self._text_loc
 
@@ -1309,8 +1467,18 @@ class _Parser:
         if m is not None:
             return self._ast_expr_from_str(m.group(0), begin_text_loc)
 
+        # Literal string
+        if accept_lit_str:
+            val = self._try_parse_lit_str(True)
+
+            if val is not None:
+                return self._ast_expr_from_str(repr(val), begin_text_loc)
+
         # Expect `{`
         msg_accepted_parts = ["a name", "or `{`"]
+
+        if accept_lit_str:
+            msg_accepted_parts.insert(0, "a literal string")
 
         if accept_const_float:
             msg_accepted_parts.insert(0, "a constant floating point number")
@@ -1586,7 +1754,7 @@ class _Parser:
                 # End
                 break
 
-            # Expect a Value
+            # Expect a value
             if expect_comma:
                 self._expect_pat(self._macro_params_comma_pat, "Expecting `,`")
 
@@ -1598,6 +1766,7 @@ class _Parser:
                         accept_const_int=True,
                         allow_neg_int=True,
                         accept_const_float=True,
+                        accept_lit_str=True,
                     ),
                     text_loc=param_text_loc
                 )
@@ -2022,15 +2191,19 @@ class _Gen:
     # `expr_str` at the location `text_loc` considering the current
     # generation state `state`.
     #
-    # If `allow_float` is `True`, then the type of the result may be
+    # If `accept_float` is `True`, then the type of the result may be
     # `float` too.
+    #
+    # If `accept_str` is `True`, then the type of the result may be
+    # `str` too.
     @staticmethod
     def _eval_expr(
         expr_str: str,
         expr: ast.Expression,
         text_loc: TextLocation,
         state: _GenState,
-        allow_float: bool = False,
+        accept_float: bool = False,
+        accept_str: bool = False,
     ):
         syms = {}  # type: VariablesT
         syms.update(state.labels)
@@ -2059,35 +2232,46 @@ class _Gen:
 
         # Validate result type
         expected_types = {int}  # type: Set[type]
-        type_msg = "`int`"
 
-        if allow_float:
+        if accept_float:
             expected_types.add(float)
-            type_msg += " or `float`"
+
+        if accept_str:
+            expected_types.add(str)
 
         if type(val) not in expected_types:
+            expected_types_str = sorted(
+                ["`{}`".format(t.__name__) for t in expected_types]
+            )
+
+            if len(expected_types_str) == 1:
+                msg_expected = expected_types_str[0]
+            elif len(expected_types_str) == 2:
+                msg_expected = " or ".join(expected_types_str)
+            else:
+                expected_types_str[-1] = "or {}".format(expected_types_str[-1])
+                msg_expected = ", ".join(expected_types_str)
+
             _raise_error(
                 "Invalid expression `{}`: expecting result type {}, not `{}`".format(
-                    expr_str, type_msg, type(val).__name__
+                    expr_str, msg_expected, type(val).__name__
                 ),
                 text_loc,
             )
 
         return val
 
-    # Evaluates the expression of `item` considering the current
-    # generation state `state`.
-    #
-    # If `allow_float` is `True`, then the type of the result may be
-    # `float` too.
+    # Forwards to _eval_expr() with the expression and text location of
+    # `item`.
     @staticmethod
     def _eval_item_expr(
-        item: Union[_FlNum, _Leb128Int, _FillUntil, _VarAssign, _Rep, _Cond],
+        item: Union[_Cond, _FillUntil, _FlNum, _Leb128Int, _Rep, _Str, _VarAssign],
         state: _GenState,
-        allow_float: bool = False,
+        accept_float: bool = False,
+        accept_str: bool = False,
     ):
         return _Gen._eval_expr(
-            item.expr_str, item.expr, item.text_loc, state, allow_float
+            item.expr_str, item.expr, item.text_loc, state, accept_float, accept_str
         )
 
     # Handles the byte item `item`.
@@ -2095,8 +2279,8 @@ class _Gen:
         self._data.append(item.val)
         state.offset += item.size
 
-    # Handles the string item `item`.
-    def _handle_str_item(self, item: _Str, state: _GenState):
+    # Handles the literal string item `item`.
+    def _handle_lit_str_item(self, item: _LitStr, state: _GenState):
         self._data += item.data
         state.offset += item.size
 
@@ -2108,7 +2292,9 @@ class _Gen:
     # Handles the variable assignment item `item`.
     def _handle_var_assign_item(self, item: _VarAssign, state: _GenState):
         # Update variable
-        state.variables[item.name] = self._eval_item_expr(item, state, True)
+        state.variables[item.name] = self._eval_item_expr(
+            item, state, accept_float=True, accept_str=True
+        )
 
     # Handles the fixed-length number item `item`.
     def _handle_fl_num_item(self, item: _FlNum, state: _GenState):
@@ -2167,7 +2353,7 @@ class _Gen:
     # Handles the LEB128 integer item `item`.
     def _handle_leb128_int_item(self, item: _Leb128Int, state: _GenState):
         # Compute value
-        val = self._eval_item_expr(item, state, False)
+        val = self._eval_item_expr(item, state)
 
         # Size in bytes
         size = self._leb128_size_for_val(val, type(item) is _SLeb128Int)
@@ -2183,6 +2369,20 @@ class _Gen:
 
         # Update offset
         state.offset += size
+
+    # Handles the string item `item`.
+    def _handle_str_item(self, item: _Str, state: _GenState):
+        # Compute value
+        val = str(self._eval_item_expr(item, state, accept_float=True, accept_str=True))
+
+        # Encode
+        data = _encode_str(val, item.codec, item.text_loc)
+
+        # Add to data
+        self._data += data
+
+        # Update offset
+        state.offset += len(data)
 
     # Handles the group item `item`, removing the immediate labels from
     # `state` at the end if `remove_immediate_labels` is `True`.
@@ -2251,7 +2451,12 @@ class _Gen:
 
         for param_name, param in zip(macro_def.param_names, item.params):
             exp_state.variables[param_name] = _Gen._eval_expr(
-                param.expr_str, param.expr, param.text_loc, init_state, True
+                param.expr_str,
+                param.expr,
+                param.text_loc,
+                init_state,
+                accept_float=True,
+                accept_str=True,
             )
 
         return exp_state
@@ -2423,6 +2628,7 @@ class _Gen:
             _FlNum: self._handle_fl_num_item,
             _Group: self._handle_group_item,
             _Label: self._handle_label_item,
+            _LitStr: self._handle_lit_str_item,
             _MacroExp: self._handle_macro_exp_item,
             _Rep: self._handle_rep_item,
             _SetBo: self._handle_set_bo_item,
@@ -2516,19 +2722,24 @@ def _val_from_assign_val_str(s: str, is_label: bool):
 
 # Returns a dictionary of string to numbers from the list of strings
 # `args` containing `NAME=VAL` entries.
-def _dict_from_arg(args: Optional[List[str]], is_label: bool):
+def _dict_from_arg(args: Optional[List[str]], is_label: bool, is_str_only: bool):
     d = {}  # type: VariablesT
 
     if args is None:
         return d
 
     for arg in args:
-        m = re.match(r"({})\s*=\s*(.+)$".format(_py_name_pat.pattern), arg)
+        m = re.match(r"({})\s*=\s*(.*)$".format(_py_name_pat.pattern), arg)
 
         if m is None:
             _raise_cli_error("Invalid assignment `{}`".format(arg))
 
-        d[m.group(1)] = _val_from_assign_val_str(m.group(2), is_label)
+        if is_str_only:
+            val = m.group(2)
+        else:
+            val = _val_from_assign_val_str(m.group(2), is_label)
+
+        d[m.group(1)] = val
 
     return d
 
@@ -2567,7 +2778,14 @@ def _parse_cli_args():
         "--var",
         metavar="NAME=VAL",
         action="append",
-        help="add an initial variable (may be repeated)",
+        help="add an initial numeric variable (may be repeated)",
+    )
+    ap.add_argument(
+        "-s",
+        "--var-str",
+        metavar="NAME=VAL",
+        action="append",
+        help="add an initial string variable (may be repeated)",
     )
     ap.add_argument(
         "-l",
@@ -2598,8 +2816,9 @@ def _parse_cli_args():
             normand = f.read()
 
     # Variables and labels
-    variables = _dict_from_arg(args.var, False)
-    labels = _dict_from_arg(args.label, True)
+    variables = _dict_from_arg(args.var, False, False)
+    variables.update(_dict_from_arg(args.var_str, False, True))
+    labels = _dict_from_arg(args.label, True, False)
 
     # Validate offset
     if args.offset < 0:

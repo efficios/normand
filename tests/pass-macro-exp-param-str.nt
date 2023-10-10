@@ -1,0 +1,16 @@
+!macro salut(zoom)
+  "meow " {zoom : s:latin1}
+!end
+
+{be}
+aa bb
+m:salut("mix\n")
+m:salut("meow")
+ff
+---
+aa bb
+
+6d 65 6f 77 20 6d 69 78 0a
+6d 65 6f 77 20 6d 65 6f 77
+
+ff

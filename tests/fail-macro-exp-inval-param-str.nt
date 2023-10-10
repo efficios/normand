@@ -1,7 +1,0 @@
-!macro salut(a, b, c)
-  "meow" 23 42
-!end
-
-aa bb m:salut(42, "yo", 12) ff
----
-5:19 - Expecting a constant integer, a constant floating point number, a name, or `{`

@@ -1,0 +1,3 @@
+{"a string"}
+---
+1:2 - Expecting a fixed-length number, a string, a variable assignment, or a byte order setting

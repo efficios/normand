@@ -1,4 +1,4 @@
-u32be "\"illusion is the first\nof all pleasures\" 🦉"
+s:u32be "\"illusion is the first\nof all pleasures\" 🦉"
 ---
 00 00 00 22 00 00 00 69 00 00 00 6c 00 00 00 6c
 00 00 00 75 00 00 00 73 00 00 00 69 00 00 00 6f
