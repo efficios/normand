@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.19, meaning both the Normand
+WARNING: This version of Normand is 0.20, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -557,23 +557,13 @@ Moreover, you can repeat many items above a constant or variable number
 of times with the ``pass:[*]`` operator _after_ the item to repeat. This
 is called a <<post-item-repetition,post-item repetition>>.
 
-A Normand comment may exist:
-
-* Between items, possibly within a group.
-* Between the nibbles of a constant hexadecimal byte.
-* Between the bits of a constant binary byte.
-* Between the last item and the ``pass:[*]`` character of a post-item
-  repetition, and between that ``pass:[*]`` character and the following
-  number or expression.
-* Between the ``!repeat``/``!r`` block opening and the following
-  constant integer, name, or expression of a repetition block.
-* Between the ``!if`` block opening and the following name or expression
-  of a conditional block.
+A Normand comment may exist pretty much anywhere between tokens.
 
 A comment is anything between two ``pass:[#]`` characters on the same
-line, or from ``pass:[#]`` until the end of the line. Whitespaces and
-the following symbol characters are also considered comments where a
-comment may exist:
+line, or from ``pass:[#]`` until the end of the line. Whitespaces are
+also considered comments. The following symbols are also considered
+comments around and between items, as well as between hexadecimal
+nibbles and binary bits of <<byte-constant,byte constants>>:
 
 ----
 / \ ? & : ; . , [ ] _ = | -

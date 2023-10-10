@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.19.0"
+__version__ = "0.20.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -761,22 +761,22 @@ class _Parser:
         # Return match object
         return m
 
-    # Pattern for _skip_ws_and_comments()
+    # Patterns for _skip_*()
+    _comment_pat = re.compile(r"#[^#]*?(?:$|#)", re.M)
+    _ws_or_comments_pat = re.compile(r"(?:\s|{})*".format(_comment_pat.pattern), re.M)
     _ws_or_syms_or_comments_pat = re.compile(
-        r"(?:[\s/\\?&:;.,[\]_=|-]|#[^#]*?(?:\n|#))*"
+        r"(?:[\s/\\?&:;.,[\]_=|-]|{})*".format(_comment_pat.pattern), re.M
     )
+
+    # Skips as many whitespaces and comments as possible, but not
+    # insignificant symbol characters.
+    def _skip_ws_and_comments(self):
+        self._try_parse_pat(self._ws_or_comments_pat)
 
     # Skips as many whitespaces, insignificant symbol characters, and
     # comments as possible.
-    def _skip_ws_and_comments(self):
+    def _skip_ws_and_comments_and_syms(self):
         self._try_parse_pat(self._ws_or_syms_or_comments_pat)
-
-    # Pattern for _skip_ws()
-    _ws_pat = re.compile(r"\s*")
-
-    # Skips as many whitespaces as possible.
-    def _skip_ws(self):
-        self._try_parse_pat(self._ws_pat)
 
     # Pattern for _try_parse_hex_byte()
     _nibble_pat = re.compile(r"[A-Fa-f0-9]")
@@ -794,7 +794,7 @@ class _Parser:
             return
 
         # Expect another nibble
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
         m_low = self._expect_pat(
             self._nibble_pat, "Expecting another hexadecimal nibble"
         )
@@ -821,13 +821,13 @@ class _Parser:
         items = []  # type: List[_Item]
 
         for _ in range(len(m.group(0))):
-            self._skip_ws_and_comments()
+            self._skip_ws_and_comments_and_syms()
             byte_text_loc = self._text_loc
             bits = []  # type: List[str]
 
             # Expect eight bits
             for _ in range(8):
-                self._skip_ws_and_comments()
+                self._skip_ws_and_comments_and_syms()
                 m = self._expect_pat(
                     self._bin_byte_bit_pat, "Expecting a bit (`0` or `1`)"
                 )
@@ -856,7 +856,7 @@ class _Parser:
             return
 
         # Expect the value
-        self._skip_ws()
+        self._skip_ws_and_comments()
         m = self._expect_pat(self._dec_byte_val_pat, "Expecting a decimal constant")
 
         # Compute value
@@ -977,11 +977,11 @@ class _Parser:
         # General prefix?
         if self._try_parse_pat(self._str_encoding_gen_prefix_pat) is not None:
             # Expect `:`
-            self._skip_ws()
+            self._skip_ws_and_comments()
             self._expect_pat(self._str_encoding_colon_pat, "Expecting `:`")
 
             # Expect encoding specification
-            self._skip_ws()
+            self._skip_ws_and_comments()
 
             # UTF?
             codec = self._try_parse_utf_str_encoding()
@@ -1015,7 +1015,7 @@ class _Parser:
         codec = self._try_parse_str_encoding()
 
         # Match prefix (expect if there's an encoding specification)
-        self._skip_ws()
+        self._skip_ws_and_comments()
 
         if codec is None:
             # No encoding: only a literal string (UTF-8) is legal
@@ -1045,7 +1045,7 @@ class _Parser:
             return _LitStr(data, begin_text_loc)
         else:
             # Expect expression
-            self._skip_ws()
+            self._skip_ws_and_comments()
             expr_text_loc = self._text_loc
             m = self._expect_pat(self._str_expr_pat, "Expecting an expression")
 
@@ -1080,7 +1080,7 @@ class _Parser:
         items = self._parse_items()
 
         # Expect end of group
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
 
         if m_open.group(0) == "(":
             pat = self._right_paren_pat
@@ -1132,6 +1132,7 @@ class _Parser:
         expr_str, expr = self._ast_expr_from_str(m_expr.group(1), begin_text_loc)
 
         # Fixed length?
+        self._skip_ws_and_comments()
         m_fmt = self._try_parse_pat(self._fl_num_len_fmt_pat)
 
         if m_fmt is None:
@@ -1193,7 +1194,7 @@ class _Parser:
             _raise_error("Existing label named `{}`".format(name), begin_text_loc)
 
         # Expect an expression
-        self._skip_ws()
+        self._skip_ws_and_comments()
         m = self._expect_pat(self._var_assign_expr_pat, "Expecting an expression")
 
         # Create an expression node from the expression string
@@ -1244,7 +1245,7 @@ class _Parser:
             # No match
             return
 
-        self._skip_ws()
+        self._skip_ws_and_comments()
 
         # Variable assignment item?
         item = self._try_parse_var_assign()
@@ -1264,7 +1265,7 @@ class _Parser:
                     )
 
         # Expect suffix
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
         return item
 
@@ -1328,7 +1329,7 @@ class _Parser:
             return
 
         # Offset setting item?
-        self._skip_ws()
+        self._skip_ws_and_comments()
         item = self._try_parse_set_offset_val()
 
         if item is None:
@@ -1340,7 +1341,7 @@ class _Parser:
                 self._raise_error("Expecting a label name or an offset setting value")
 
         # Expect suffix
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._label_set_offset_suffix_pat, "Expecting `>`")
         return item
 
@@ -1351,11 +1352,11 @@ class _Parser:
     # if none.
     def _parse_pad_val(self):
         # Padding value?
-        self._skip_ws()
+        self._skip_ws_and_comments()
         pad_val = 0
 
         if self._try_parse_pat(self._pad_val_prefix_pat) is not None:
-            self._skip_ws()
+            self._skip_ws_and_comments()
             pad_val_text_loc = self._text_loc
             m = self._expect_pat(
                 _pos_const_int_pat,
@@ -1388,7 +1389,7 @@ class _Parser:
             return
 
         # Expect an alignment
-        self._skip_ws()
+        self._skip_ws_and_comments()
         align_text_loc = self._text_loc
         m = self._expect_pat(
             self._align_offset_val_pat,
@@ -1498,13 +1499,13 @@ class _Parser:
         )
 
         # Expect an expression
-        self._skip_ws()
+        self._skip_ws_and_comments()
         expr_text_loc = self._text_loc
         m = self._expect_pat(self._inner_expr_pat, "Expecting an expression")
         expr_str = m.group(0)
 
         # Expect `}`
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._inner_expr_suffix_pat, "Expecting `}`")
 
         return self._ast_expr_from_str(expr_str, expr_text_loc)
@@ -1523,7 +1524,7 @@ class _Parser:
             return
 
         # Expect expression
-        self._skip_ws()
+        self._skip_ws_and_comments()
         expr_str, expr = self._expect_expr(accept_const_int=True)
 
         # Padding value
@@ -1558,12 +1559,12 @@ class _Parser:
         expr_str, expr = self._expect_rep_mul_expr()
 
         # Parse items
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
         items_text_loc = self._text_loc
         items = self._parse_items()
 
         # Expect end of block
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
         self._expect_pat(
             self._block_end_pat, "Expecting an item or `!end` (end of repetition block)"
         )
@@ -1590,18 +1591,18 @@ class _Parser:
         expr_str, expr = self._expect_expr()
 
         # Parse "true" items
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
         true_items_text_loc = self._text_loc
         true_items = self._parse_items()
         false_items = []  # type: List[_Item]
         false_items_text_loc = begin_text_loc
 
         # `!else`?
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
 
         if self._try_parse_pat(self._cond_block_else_pat) is not None:
             # Parse "false" items
-            self._skip_ws_and_comments()
+            self._skip_ws_and_comments_and_syms()
             false_items_text_loc = self._text_loc
             false_items = self._parse_items()
 
@@ -1640,7 +1641,7 @@ class _Parser:
             return False
 
         # Expect a name
-        self._skip_ws()
+        self._skip_ws_and_comments()
         name_text_loc = self._text_loc
         m = self._expect_pat(_py_name_pat, "Expecting a valid macro name")
 
@@ -1651,7 +1652,7 @@ class _Parser:
             _raise_error("Duplicate macro named `{}`".format(name), name_text_loc)
 
         # Expect `(`
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._left_paren_pat, "Expecting `(`")
 
         # Try to parse comma-separated parameter names
@@ -1659,7 +1660,7 @@ class _Parser:
         expect_comma = False
 
         while True:
-            self._skip_ws()
+            self._skip_ws_and_comments()
 
             # End?
             if self._try_parse_pat(self._right_paren_pat) is not None:
@@ -1671,7 +1672,7 @@ class _Parser:
                 self._expect_pat(self._macro_params_comma_pat, "Expecting `,`")
 
             # Expect parameter name
-            self._skip_ws()
+            self._skip_ws_and_comments()
             param_text_loc = self._text_loc
             m = self._expect_pat(_py_name_pat, "Expecting valid parameter name")
 
@@ -1685,7 +1686,7 @@ class _Parser:
             expect_comma = True
 
         # Expect items
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
         items_text_loc = self._text_loc
         old_var_names = self._var_names.copy()
         old_label_names = self._label_names.copy()
@@ -1722,11 +1723,11 @@ class _Parser:
             return
 
         # Expect `:`
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._macro_exp_colon_pat, "Expecting `:`")
 
         # Expect a macro name
-        self._skip_ws()
+        self._skip_ws_and_comments()
         name_text_loc = self._text_loc
         m = self._expect_pat(_py_name_pat, "Expecting a valid macro name")
 
@@ -1738,7 +1739,7 @@ class _Parser:
             _raise_error("Unknown macro name `{}`".format(name), name_text_loc)
 
         # Expect `(`
-        self._skip_ws()
+        self._skip_ws_and_comments()
         self._expect_pat(self._left_paren_pat, "Expecting `(`")
 
         # Try to parse comma-separated parameter values
@@ -1747,7 +1748,7 @@ class _Parser:
         expect_comma = False
 
         while True:
-            self._skip_ws()
+            self._skip_ws_and_comments()
 
             # End?
             if self._try_parse_pat(self._right_paren_pat) is not None:
@@ -1758,7 +1759,7 @@ class _Parser:
             if expect_comma:
                 self._expect_pat(self._macro_params_comma_pat, "Expecting `,`")
 
-            self._skip_ws()
+            self._skip_ws_and_comments()
             param_text_loc = self._text_loc
             params.append(
                 _MacroExpParam(
@@ -1869,7 +1870,7 @@ class _Parser:
     #
     # Appends any parsed item to `items`.
     def _try_append_item(self, items: List[_Item]):
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
 
         # Base item
         item = self._try_parse_base_item()
@@ -1921,7 +1922,7 @@ class _Parser:
         items = self._parse_items(True)
 
         # Make sure there's nothing left
-        self._skip_ws_and_comments()
+        self._skip_ws_and_comments_and_syms()
 
         if self._isnt_done():
             self._raise_error(
