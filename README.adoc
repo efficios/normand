@@ -901,7 +901,7 @@ The available lengths are 8, 16, 24, 32, 40, 48, 56, and 64.
 * A floating point number
   (https://standards.ieee.org/standard/754-2008.html[IEEE{nbsp}754-2008]).
 +
-The available length are 32 (_binary32_) and 64 (_binary64_).
+The available lengths are 32 (_binary32_) and 64 (_binary64_).
 
 The value is the result of evaluating a {py3} expression.
 
