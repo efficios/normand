@@ -1,5 +1,5 @@
-{False : s:latin1}
-{True : s:latin1}
+[False : s:latin1]
+[True : s:latin1]
 ---
 30
 31

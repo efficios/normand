@@ -1,6 +1,6 @@
 aa {mix = 23} bb <flake> cc
 (
-  dd {meow : uleb128}
+  dd [meow : uleb128]
   ff
   <meow>
 )

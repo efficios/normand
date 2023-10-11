@@ -1,11 +1,11 @@
 !transform quopri
   "bonjour tout le monde"
-  <beg1> {ICITTE - beg1 : 8} * 15
+  <beg1> [ICITTE - beg1 : 8] * 15
 !end
 
 !t qp
   "bonjour tout le monde"
-  <beg2> {ICITTE - beg2 : 8} * 15
+  <beg2> [ICITTE - beg2 : 8] * 15
 !end
 ---
 62 6f 6e 6a 6f 75 72 20 74 6f 75 74 20 6c 65 20

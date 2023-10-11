@@ -1,11 +1,11 @@
 !macro A(val, is_be)
-  {le}
+  !le
 
   !if is_be
-    {be}
+    !be
   !end
 
-  {val : 16}
+  [val : 16]
 !end
 
 !macro B(rep, is_be)

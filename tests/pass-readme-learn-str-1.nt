@@ -1,7 +1,7 @@
 {iter = 1}
 
 !repeat 10
-  {iter : s:u8} " "
+  u8{iter} " "
   {iter = iter + 1}
 !end
 ---

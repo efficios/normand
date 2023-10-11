@@ -1,7 +1,7 @@
 {meow = 'LÉGIFÉRER'}
 
-{meow.lower() : s:latin1}
-{ICITTE == len(meow) : 8}
+[meow.lower() : s:latin1]
+[ICITTE == len(meow) : 8]
 ---
 6c e9 67 69 66 e9 72 65 72
 01

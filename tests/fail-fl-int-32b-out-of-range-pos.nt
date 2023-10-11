@@ -1,5 +1,5 @@
-{be}
+!be
 "yoyo"
-{ 2**32 : 32 }
+[ 2**32 : 32 ]
 ---
 3:3 - Value 4,294,967,296 is outside the 32-bit range when evaluating expression `2**32`

@@ -1,4 +1,4 @@
-00 !group 11 <meow> 22 {mix-meow:8} 33 <mix> 44 !end * 2 55
+00 !group 11 <meow> 22 [mix-meow:8] 33 <mix> 44 !end * 2 55
 ---
 00
 11 22 03 33 44

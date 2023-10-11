@@ -1,9 +1,9 @@
 !m s()
-  {0xabcd : 16}
+  [0xabcd : 16]
 !end
 
-{be} m:s()
-{le} m:s()
+!be m:s()
+!le m:s()
 ---
 ab cd
 cd ab

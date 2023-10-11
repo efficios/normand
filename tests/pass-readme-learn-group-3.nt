@@ -1,8 +1,8 @@
-{be}
+!be
 (
   <str_beg> u16le"sébastien diaz" <str_end>
-  {ICITTE - str_beg : 8}
-  {(end - str_beg) * 5 : 24}
+  [ICITTE - str_beg : 8]
+  [(end - str_beg) * 5 : 24]
 ) * 3
 <end>
 ---

@@ -1,4 +1,4 @@
-{end - ICITTE - 1 : 8} * 0x100 <end>
+[end - ICITTE - 1 : 8] * 0x100 <end>
 ---
 ff fe fd fc fb fa f9 f8 f7 f6 f5 f4 f3 f2 f1 f0
 ef ee ed ec eb ea e9 e8 e7 e6 e5 e4 e3 e2 e1 e0

@@ -1,6 +1,6 @@
 aa bb
 {meow = 1111}
-cc {meow : uleb128}
+cc [meow : uleb128]
 ee ff
 ---
 aa bb

@@ -1,11 +1,11 @@
 !transform base64
   "bonjour tout le monde"
-  <beg1> {ICITTE - beg1 : 8} * 15
+  <beg1> [ICITTE - beg1 : 8] * 15
 !end
 
 !t b64
   "bonjour tout le monde"
-  <beg2> {ICITTE - beg2 : 8} * 15
+  <beg2> [ICITTE - beg2 : 8] * 15
 !end
 ---
 59 6d 39 75 61 6d 39 31 63 69 42 30 62 33 56 30

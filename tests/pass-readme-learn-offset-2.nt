@@ -1,5 +1,5 @@
 aa bb cc dd <meow> ee ff
 <12> 11 22 33 <mix> 44 55
-{meow : 8} {mix : 8}
+[meow : 8] [mix : 8]
 ---
 aa bb cc dd ee ff 11 22 33 44 55 04 0f

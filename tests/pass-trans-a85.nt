@@ -1,11 +1,11 @@
 !transform ascii85
   "bonjour tout le monde"
-  <beg1> {ICITTE - beg1 : 8} * 15
+  <beg1> [ICITTE - beg1 : 8] * 15
 !end
 
 !t a85
   "bonjour tout le monde"
-  <beg2> {ICITTE - beg2 : 8} * 15
+  <beg2> [ICITTE - beg2 : 8] * 15
 !end
 ---
 40 57 2d 2e 21 44 66 70 28 43 46 44 6c 3b 44 2b

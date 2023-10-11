@@ -1,11 +1,11 @@
 !transform base32
   "bonjour tout le monde"
-  <beg1> {ICITTE - beg1 : 8} * 15
+  <beg1> [ICITTE - beg1 : 8] * 15
 !end
 
 !t b32
   "bonjour tout le monde"
-  <beg2> {ICITTE - beg2 : 8} * 15
+  <beg2> [ICITTE - beg2 : 8] * 15
 !end
 ---
 4d 4a 58 57 34 32 54 50 4f 56 5a 43 41 35 44 50

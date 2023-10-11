@@ -1,4 +1,4 @@
-aa {zoom = 10} bb cc +zoom {ICITTE:8}
+aa {zoom = 10} bb cc +zoom [ICITTE:8]
 ---
 aa bb cc 00 00
 00 00 00 00 00

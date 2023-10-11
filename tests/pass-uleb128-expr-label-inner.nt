@@ -3,7 +3,7 @@
   aa bb
   <meow>
   cc dd
-  {meow * 500 : uleb128}
+  [meow * 500 : uleb128]
   ee ff
 ) * 2
 22

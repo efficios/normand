@@ -1,9 +1,9 @@
 {dim = 128}
-{le}
+!le
 
 # Single pixel macro
 !macro px(r, g, b)
-  {r:8} {g:8} {b:8}
+  [r:8] [g:8] [b:8]
 !end
 
 # Header
@@ -11,31 +11,31 @@
   "BM"
 
   # File size
-  {end : 32}
+  [end : 32]
 
   # Reserved
   00 00 00 00
 
   # Bitmap data offset
-  {data : 32}
+  [data : 32]
 
 # DIB header
   <dib_start>
 
   # DIB header size
-  {dib_end - dib_start : 32}
+  [dib_end - dib_start : 32]
 
   # Bitmap width
-  {dim : 16}
+  [dim : 16]
 
   # Bitmap height
-  {dim : 16}
+  [dim : 16]
 
   # Planes
-  {1 : 16}
+  [1 : 16]
 
   # Bits/pixel
-  {24 : 16}
+  [24 : 16]
 
   <dib_end>
 

@@ -1,5 +1,5 @@
 !macro meow()
-  {1993:8}
+  [1993:8]
 !end
 
 !macro mix()

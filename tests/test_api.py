@@ -26,20 +26,20 @@ import normand
 
 def test_init_labels():
     labels = {"yo": 0x88, "meow": 123}  # type: normand.LabelsT
-    res = normand.parse("11 22 {yo:8} 33", init_labels=labels.copy())
+    res = normand.parse("11 22 [yo:8] 33", init_labels=labels.copy())
     assert res.data == bytearray([0x11, 0x22, 0x88, 0x33])
     assert res.labels == labels.copy()
 
 
 def test_init_vars():
     variables = {"zoom": 0x88, "bateau": -123.45}  # type: normand.VariablesT
-    res = normand.parse("11 22 {zoom:8} 33", init_variables=variables.copy())
+    res = normand.parse("11 22 [zoom:8] 33", init_variables=variables.copy())
     assert res.data == bytearray([0x11, 0x22, 0x88, 0x33])
     assert res.variables == variables.copy()
 
 
 def test_init_offset():
-    res = normand.parse("11 22 {ICITTE:8} 33", init_offset=0x23)
+    res = normand.parse("11 22 [ICITTE:8] 33", init_offset=0x23)
     assert res.data == bytearray([0x11, 0x22, 0x25, 0x33])
     assert res.offset == 0x27
 
@@ -51,7 +51,7 @@ def _test_init_bo(bo: normand.ByteOrder):
     if bo == normand.ByteOrder.LE:
         h_byte, l_byte = l_byte, h_byte
 
-    res = normand.parse("11 22 {-1993:16} 33", init_byte_order=bo)
+    res = normand.parse("11 22 [-1993:16] 33", init_byte_order=bo)
     assert res.data == bytearray([0x11, 0x22, h_byte, l_byte, 0x33])
     assert res.byte_order == bo
 
@@ -91,17 +91,17 @@ def test_final_offset():
 
 
 def test_final_byte_order_none():
-    res = normand.parse("11 22 33 {-19:8} 44 55")
+    res = normand.parse("11 22 33 [-19:8] 44 55")
     assert res.byte_order is None
 
 
 def test_final_byte_order_be():
-    res = normand.parse("11 22 {le} 33 {-19:8} 44 ( {be} 88 ) * 3 55")
+    res = normand.parse("11 22 !le 33 [-19:8] 44 ( !be 88 ) * 3 55")
     assert res.byte_order == normand.ByteOrder.BE
 
 
 def test_final_byte_order_le():
-    res = normand.parse("11 22 {be} 33 {-19:8} 44 ( {le} 88 ) * 3 55")
+    res = normand.parse("11 22 !be 33 [-19:8] 44 ( !le 88 ) * 3 55")
     assert res.byte_order == normand.ByteOrder.LE
 
 

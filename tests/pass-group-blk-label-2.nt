@@ -1,8 +1,8 @@
 00
 !group
-  11 {mix:8} 22 <mix>
+  11 [mix:8] 22 <mix>
   !group
-    <meow> {meow + mix : 8}
+    <meow> [meow + mix : 8]
   !end * 3
   33
 !end * 2

@@ -3,7 +3,7 @@
     aa bb cc dd
 
     !if cond
-      "hello" {val * 2 : 8}
+      "hello" [val * 2 : 8]
     !end
   !end
 !end

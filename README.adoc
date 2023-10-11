@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.21, meaning both the Normand
+WARNING: This version of Normand is 0.22, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -141,9 +141,9 @@ Input:
 +
 ----
 {strength = 4}
-{be} 67 <lbl> 44 $178 {(end - lbl) * 8 + strength : 16} $99 <end>
-{le} {-1993 : 32}
-{-3.141593 : 64}
+!be 67 <lbl> 44 $178 [(end - lbl) * 8 + strength : 16] $99 <end>
+!le [-1993 : 32]
+[-3.141593 : 64]
 ----
 +
 Output:
@@ -161,8 +161,8 @@ https://en.wikipedia.org/wiki/LEB128[LEB128] integer::
 Input:
 +
 ----
-aa bb cc {-1993 : sleb128} <meow> dd ee ff
-{meow * 199 : uleb128}
+aa bb cc [-1993 : sleb128] <meow> dd ee ff
+[meow * 199 : uleb128]
 ----
 +
 Output:
@@ -230,12 +230,12 @@ Alignment::
 Input:
 +
 ----
-{be}
+!be
 
-        {199:32}
-@64     {43:64}
-@16     {-123:16}
-@32~255 {5584:32}
+        [199:32]
+@64     [43:64]
+@16     [-123:16]
+@32~255 [5584:32]
 ----
 +
 Output:
@@ -250,15 +250,15 @@ Filling::
 Input:
 +
 ----
-{le}
-{0xdeadbeef:32}
-{-1993:16}
-{9:16}
+!le
+[0xdeadbeef:32]
+[-1993:16]
+[9:16]
 +0x40
-{ICITTE:8}
+[ICITTE:8]
 "meow mix"
 +200~FFh
-{ICITTE:8}
+[ICITTE:8]
 ----
 +
 Output:
@@ -284,7 +284,7 @@ Transformation::
 Input:
 +
 ----
-"end of file @ " {end:8}
+"end of file @ " [end:8]
 
 !transform gzip
   "this part will be gzipped"
@@ -436,14 +436,14 @@ equivalent, for example:
 ----
 ff dd 01 ab $192 $-128 %1101:0011
 
-{end:8}
+[end:8]
 
 {iter = 1}
 
 !if {not something}
   # five times because xyz
   !repeat 5
-    "hello world " {iter:8}
+    "hello world " [iter:8]
     {iter = iter + 1}
   !end
 !end
@@ -591,7 +591,7 @@ comments around and between items, as well as between hexadecimal
 nibbles and binary bits of <<byte-constant,byte constants>>:
 
 ----
-/ \ ? & : ; . , [ ] _ = | -
+& , - . / : ; = ? \ _ |
 ----
 
 The latter serve to improve readability so that you may write, for
@@ -624,6 +624,8 @@ Binary::
 +
 * The `0b` or `0B` prefix followed with one or more bits (`0` or `1`).
 * One or more bits followed with the `b` or `B` suffix.
+
+In general, anything between `pass:[{]` and `}` is a {py3} expression.
 
 You can test the examples of this section with the `normand`
 <<command-line-tool,command-line tool>> as such:
@@ -660,7 +662,7 @@ The number of `%` characters is the number of subsequent expected bytes.
 Input:
 
 ----
-ab cd [3d 8F] CC
+ab cd (3d 8F) CC
 ----
 
 Output:
@@ -884,8 +886,8 @@ This special item sets the <<cur-bo,_current byte order_>>.
 The two accepted forms are:
 
 [horizontal]
-``pass:[{be}]``:: Set the current byte order to big endian.
-``pass:[{le}]``:: Set the current byte order to little endian.
+`!be`:: Set the current byte order to big endian.
+`!le`:: Set the current byte order to little endian.
 
 === Fixed-length number
 
@@ -906,7 +908,7 @@ The value is the result of evaluating a {py3} expression using the
 
 A fixed-length number is:
 
-. The ``pass:[{]`` prefix.
+. The `[` prefix.
 
 . A valid {py3} expression.
 +
@@ -934,14 +936,14 @@ The expression evaluates to a `float` value::
     `32` and `64`.
 --
 
-. The `}` suffix.
+. The `]` suffix.
 
 ====
 Input:
 
 ----
-{le} {345:16}
-{be} {-0xabcd:32}
+!le [345:16]
+!be [-0xabcd:32]
 ----
 
 Output:
@@ -955,10 +957,10 @@ Output:
 Input:
 
 ----
-{be}
+!be
 
 # String length in bits
-{8 * (str_end - str_beg) : 16}
+[8 * (str_end - str_beg) : 16]
 
 # String
 <str_beg>
@@ -977,7 +979,7 @@ Output:
 Input:
 
 ----
-{20 - ICITTE : 8} * 10
+[20 - ICITTE : 8] * 10
 ----
 
 Output:
@@ -991,8 +993,8 @@ Output:
 Input:
 
 ----
-{le}
-{2 * 0.0529 : 32}
+!le
+[2 * 0.0529 : 32]
 ----
 
 Output:
@@ -1011,7 +1013,7 @@ format.
 
 An LEB128 integer is:
 
-. The ``pass:[{]`` prefix.
+. The `[` prefix.
 
 . A valid {py3} expression of which the evaluation result type
   is `int` or `bool` (automatically converted to `int`).
@@ -1039,13 +1041,13 @@ is the <<cur-offset,current offset>> (before encoding the integer).
 `sleb128`:: Use the signed LEB128 format.
 --
 
-. The `}` suffix.
+. The `]` suffix.
 
 ====
 Input:
 
 ----
-{624485 : uleb128}
+[624485 : uleb128]
 ----
 
 Output:
@@ -1062,7 +1064,7 @@ Input:
 aa bb cc dd
 <meow>
 ee ff
-{-981238311 + (meow * -23) : sleb128}
+[-981238311 + (meow * -23) : sleb128]
 "hello"
 ----
 
@@ -1161,7 +1163,7 @@ is the <<cur-offset,current offset>> (before encoding the string).
 
 Encoding suffix form:: {empty}
 +
-. The ``pass:[{]`` prefix.
+. The `[` prefix.
 
 . A valid {py3} expression of which the evaluation result type
   is `bool`, `int`, `float`, or `str` (the first three automatically
@@ -1232,7 +1234,7 @@ is the <<cur-offset,current offset>> (before encoding the string).
     ISO/IEC 8859-16.
 --
 
-. The `}` suffix.
+. The `]` suffix.
 
 ====
 Input:
@@ -1241,7 +1243,7 @@ Input:
 {iter = 1}
 
 !repeat 10
-  {iter : s:u8} " "
+  u8{iter} " "
   {iter = iter + 1}
 !end
 ----
@@ -1259,7 +1261,7 @@ Input:
 
 ----
 {meow = 'salut jérémie'}
-{meow.upper() : s:latin1}
+[meow.upper() : s:latin1]
 ----
 
 Output:
@@ -1286,8 +1288,8 @@ A current offset setting is:
 Input:
 
 ----
-       {ICITTE : 8} * 8
-<0x61> {ICITTE : 8} * 8
+       [ICITTE : 8] * 8
+<0x61> [ICITTE : 8] * 8
 ----
 
 Output:
@@ -1303,7 +1305,7 @@ Input:
 ----
 aa bb cc dd <meow> ee ff
 <12> 11 22 33 <mix> 44 55
-{meow : 8} {mix : 8}
+[meow : 8] [mix : 8]
 ----
 
 Output:
@@ -1360,9 +1362,9 @@ Output:
 Input:
 
 ----
-{le}
+!le
 77 88
-@32~0xcc {-893.5:32}
+@32~0xcc [-893.5:32]
 @128~0x55 "meow"
 ----
 
@@ -1404,7 +1406,7 @@ A filling is:
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
-   `int`), and the ``pass:[}]`` suffix.
+   `int`), and the `}` suffix.
 +
 For a filling at some source location{nbsp}__**L**__, this expression
 may contain:
@@ -1423,7 +1425,7 @@ repeat).
 ** A valid {py3} name.
 +
 For the name `__NAME__`, this is equivalent to the
-`pass:[{]__NAME__pass:[}]` form above.
+`pass:[{]__NAME__}` form above.
 
 +
 This value must be greater than or equal to the current offset where
@@ -1464,7 +1466,7 @@ Input:
 
 ----
 !macro part(iter, fill)
-  <0> "particular security " {ord('0') + iter : 8} +fill~0x80
+  <0> "particular security " [ord('0') + iter : 8] +fill~0x80
 !end
 
 {iter = 1}
@@ -1547,9 +1549,9 @@ is the <<cur-offset,current offset>>.
 Input:
 
 ----
-{mix = 101} {le}
-{meow = 42} 11 22 {meow:8} 33 {meow = ICITTE + 17}
-"yooo" {meow + mix : 16}
+{mix = 101} !le
+{meow = 42} 11 22 [meow:8] 33 {meow = ICITTE + 17}
+"yooo" [meow + mix : 16]
 ----
 
 Output:
@@ -1622,11 +1624,11 @@ bb cc aa bb cc dd ee
 Input:
 
 ----
-{be}
+!be
 (
   <str_beg> u16le"sébastien diaz" <str_end>
-  {ICITTE - str_beg : 8}
-  {(end - str_beg) * 5 : 24}
+  [ICITTE - str_beg : 8]
+  [(end - str_beg) * 5 : 24]
 ) * 3
 <end>
 ----
@@ -1657,7 +1659,7 @@ A conditional block is:
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
-   `int`), and the ``pass:[}]`` suffix.
+   `int`), and the `}` suffix.
 +
 For a conditional block at some source location{nbsp}__**L**__, this
 expression may contain:
@@ -1676,7 +1678,7 @@ items).
 ** A valid {py3} name.
 +
 For the name `__NAME__`, this is equivalent to the
-`pass:[{]__NAME__pass:[}]` form above.
+`pass:[{]__NAME__}` form above.
 
 . Zero or more items to be handled when the condition is true
   except, recursively, a macro definition block.
@@ -1760,7 +1762,7 @@ A repetition block is:
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
-   `int`), and the ``pass:[}]`` suffix.
+   `int`), and the `}` suffix.
 +
 For a repetition block at some source location{nbsp}__**L**__, this
 expression may contain:
@@ -1779,7 +1781,7 @@ repeat).
 ** A valid {py3} name.
 +
 For the name `__NAME__`, this is equivalent to the
-`pass:[{]__NAME__pass:[}]` form above.
+`pass:[{]__NAME__}` form above.
 
 . Zero or more items except, recursively, a macro definition block.
 
@@ -1794,7 +1796,7 @@ Input:
 
 ----
 !repeat 0o400
-  {end - ICITTE - 1 : 8}
+  [end - ICITTE - 1 : 8]
 !end
 
 <end>
@@ -1958,7 +1960,7 @@ Input:
 ----
 aa bb cc dd
 
-"size of compressed section: " {end - start : 8}
+"size of compressed section: " [end - start : 8]
 
 <start>
 
@@ -2001,7 +2003,7 @@ Input:
 
 @128~99h
 
-!t qp <beg> {ICITTE - beg : 8} * 50 !end
+!t qp <beg> [ICITTE - beg : 8] * 50 !end
 ----
 
 Output:
@@ -2070,7 +2072,7 @@ A macro definition is:
 ====
 ----
 !macro bake()
-  {le} {ICITTE * 8 : 16}
+  !le [ICITTE * 8 : 16]
   u16le"predict explode"
 !end
 ----
@@ -2082,8 +2084,8 @@ A macro definition is:
   {iter = 1}
 
   !repeat rep
-    {val + iter : uleb128}
-    {0xdeadbeef : 32}
+    [val + iter : uleb128]
+    [0xdeadbeef : 32]
     {iter = iter + 1}
   !end
 
@@ -2156,7 +2158,7 @@ A parameter value is one of:
 
 * The ``pass:[{]`` prefix, a valid {py3} expression of which the
   evaluation result type is `int` or `bool` (automatically converted to
-  `int`), and the ``pass:[}]`` suffix.
+  `int`), and the `}` suffix.
 +
 For a macro expansion at some source location{nbsp}__**L**__, this
 expression may contain:
@@ -2184,7 +2186,7 @@ Input:
 
 ----
 !macro bake()
-  {le} {ICITTE * 8 : 16}
+  !le [ICITTE * 8 : 16]
   u16le"predict explode"
 !end
 
@@ -2217,13 +2219,13 @@ Input:
 
 ----
 !macro A(val, is_be)
-  {le}
+  !le
 
   !if is_be
-    {be}
+    !be
   !end
 
-  {val : 16}
+  [val : 16]
 !end
 
 !macro B(rep, is_be)
@@ -2250,7 +2252,7 @@ Output:
 Input:
 
 ----
-!macro flt32be(val) {be} {val : 32} !end
+!macro flt32be(val) !be [val : 32] !end
 
 "CHEETOS"
 m:flt32be(-42.17)
@@ -2291,7 +2293,7 @@ A post-item repetition is:
 
 ** The ``pass:[{]`` prefix, a valid {py3} expression of which the
    evaluation result type is `int` or `bool` (automatically converted to
-   `int`), and the ``pass:[}]`` suffix.
+   `int`), and the `}` suffix.
 +
 For a post-item repetition at some source location{nbsp}__**L**__, this
 expression may contain:
@@ -2322,7 +2324,7 @@ You may also use a <<repetition-block,repetition block>>. The form
 Input:
 
 ----
-{end - ICITTE - 1 : 8} * 0x100 <end>
+[end - ICITTE - 1 : 8] * 0x100 <end>
 ----
 
 Output:

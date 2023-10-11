@@ -1,7 +1,7 @@
-{be}
+!be
 
 # String length in bits
-{8 * (str_end - str_beg) : 16}
+[8 * (str_end - str_beg) : 16]
 
 # String
 <str_beg>

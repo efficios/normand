@@ -77,7 +77,7 @@ class _NormandTestItemFail(_NormandTestItem):
             normand.parse(normand_text)
 
         exc = exc_info.value
-        expected_msg = ''
+        expected_msg = ""
 
         for msg in reversed(exc.messages):
             expected_msg += "{}:{} - {}\n".format(

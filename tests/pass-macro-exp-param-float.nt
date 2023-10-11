@@ -1,8 +1,8 @@
 !macro salut(a, b, c)
-  "meow" {b : 32}
+  "meow" [b : 32]
 !end
 
-{be}
+!be
 aa bb
 m:salut(42, 45.12, 12)
 m:salut(42, -12.34e9, 12)

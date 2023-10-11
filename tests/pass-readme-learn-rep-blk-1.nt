@@ -1,5 +1,5 @@
 !repeat 0o400
-  {end - ICITTE - 1 : 8}
+  [end - ICITTE - 1 : 8]
 !end
 
 <end>

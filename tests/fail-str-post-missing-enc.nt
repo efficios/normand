@@ -1,3 +1,3 @@
-{"a string" : }
+["a string" : ]
 ---
 1:15 - Expecting a fixed length (multiple of eight bits), `uleb128`, `sleb128`, or `s:` followed with a valid encoding (`u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`)

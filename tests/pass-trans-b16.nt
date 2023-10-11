@@ -1,11 +1,11 @@
 !transform base16
   "bonjour tout le monde"
-  <beg1> {ICITTE - beg1 : 8} * 15
+  <beg1> [ICITTE - beg1 : 8] * 15
 !end
 
 !t b16
   "bonjour tout le monde"
-  <beg2> {ICITTE - beg2 : 8} * 15
+  <beg2> [ICITTE - beg2 : 8] * 15
 !end
 ---
 36 32 36 46 36 45 36 41 36 46 37 35 37 32 32 30

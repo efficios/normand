@@ -1,5 +1,5 @@
 !m ci(val)
-  {val:8}
+  [val:8]
 !end
 
 m:ci(0x01)

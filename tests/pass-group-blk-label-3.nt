@@ -1,6 +1,6 @@
 00 <outer>
 !group
-  11 <inner> 22 {outer:8} {inner:8} {end:8}
+  11 <inner> 22 [outer:8] [inner:8] [end:8]
 !end * 3
 <end> ff
 ---

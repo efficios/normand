@@ -1,5 +1,5 @@
 !macro meow(yeah)
-  {yeah:8}
+  [yeah:8]
 !end
 
 !macro mix(yeah)

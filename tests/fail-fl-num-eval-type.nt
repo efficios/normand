@@ -1,3 +1,3 @@
-{ 'salut' : 8 }
+[ 'salut' : 8 ]
 ---
 1:3 - Invalid expression `'salut'`: expecting result type `float` or `int`, not `str`

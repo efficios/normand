@@ -6,6 +6,6 @@ aa bb cc dd
   ee ff "meow mix" 00
 !end
 
-{be} {-1993:16}
+!be [-1993:16]
 ---
 aa bb cc dd ee ff 6d 65 6f 77 20 6d 69 78 00 f8 37

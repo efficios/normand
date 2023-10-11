@@ -1,5 +1,5 @@
 !m butter(val)
-  {val : 8}
+  [val : 8]
 !end
 
 m:butter(0x23) m:butter(0x42)

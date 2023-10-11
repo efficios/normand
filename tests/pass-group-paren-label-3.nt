@@ -1,4 +1,4 @@
-00 <outer> (11 <inner> 22 {outer:8} {inner:8} {end:8}) * 3 <end> ff
+00 <outer> (11 <inner> 22 [outer:8] [inner:8] [end:8]) * 3 <end> ff
 ---
 00
   11 22 01 02 10

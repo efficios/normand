@@ -1,5 +1,5 @@
 !macro part(iter, fill)
-  <0> "particular security " {ord('0') + iter : 8} +fill~0x80
+  <0> "particular security " [ord('0') + iter : 8] +fill~0x80
 !end
 
 {iter = 1}

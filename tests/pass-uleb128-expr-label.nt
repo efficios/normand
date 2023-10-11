@@ -1,7 +1,7 @@
 aa bb
 <meow>
 11 22
-{meow * 199 : uleb128}
+[meow * 199 : uleb128]
 ee ff
 ---
 aa bb

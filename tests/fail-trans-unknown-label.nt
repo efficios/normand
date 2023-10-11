@@ -1,6 +1,6 @@
 !transform base64
   "meow"
-  {far:8}
+  [far:8]
   "mix"
   <far>
 !end

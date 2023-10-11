@@ -1,10 +1,10 @@
 {zoom = 'hello 🦊'}
 
-{zoom : s:u8}
-{zoom : s:u16be}
-{zoom : s:u16le}
-{zoom : s:u32be}
-{zoom : s:u32le}
+[zoom : s:u8]
+[zoom : s:u16be]
+[zoom : s:u16le]
+[zoom : s:u32be]
+[zoom : s:u32le]
 ---
 68 65 6c 6c 6f 20 f0 9f a6 8a 00 68 00 65 00 6c
 00 6c 00 6f 00 20 d8 3e dd 8a 68 00 65 00 6c 00

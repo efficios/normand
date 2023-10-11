@@ -1,4 +1,4 @@
 {meow = 'salut jérémie'}
-{meow.upper() : s:latin1}
+[meow.upper() : s:latin1]
 ---
 53 41 4c 55 54 20 4a c9 52 c9 4d 49 45

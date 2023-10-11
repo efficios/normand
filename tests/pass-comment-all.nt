@@ -13,26 +13,26 @@ a#bonjour tout le monde#a#bonjour tout le monde#bb#bonjour tout le monde#
 #bonjour tout le monde#s#bonjour tout le monde#:#bonjour tout le monde#u16be#bonjour tout le monde#"coucou"#bonjour tout le monde#
 
 # byte order setting
-#bonjour tout le monde#{#bonjour tout le monde#be#bonjour tout le monde#}#bonjour tout le monde#{0xaabb:16}
-#bonjour tout le monde#{#bonjour tout le monde#le#bonjour tout le monde#}#bonjour tout le monde#{0xaabb:16}
+#bonjour tout le monde#!be#bonjour tout le monde#[0xaabb:16]
+#bonjour tout le monde#!le#bonjour tout le monde#[0xaabb:16]
 
 # fixed-length number
-#bonjour tout le monde#{ 0xbeef :#bonjour tout le monde#16#bonjour tout le monde#}#bonjour tout le monde#
+#bonjour tout le monde#[#bonjour tout le monde#0xbeef :#bonjour tout le monde#16#bonjour tout le monde#]#bonjour tout le monde#
 
 # LEB128 integer: unsigned
-#bonjour tout le monde#{ 12345678 :#bonjour tout le monde#uleb128#bonjour tout le monde#}#bonjour tout le monde#
+#bonjour tout le monde#[#bonjour tout le monde#12345678 :#bonjour tout le monde#uleb128#bonjour tout le monde#]#bonjour tout le monde#
 
 # LEB128 integer: signed
-#bonjour tout le monde#{ -12345678 :#bonjour tout le monde#sleb128#bonjour tout le monde#}#bonjour tout le monde#
+#bonjour tout le monde#[#bonjour tout le monde#-12345678 :#bonjour tout le monde#sleb128#bonjour tout le monde#]#bonjour tout le monde#
 
 # string: encoding before
 #bonjour tout le monde#s#bonjour tout le monde#:#bonjour tout le monde#latin1#bonjour tout le monde#{ "allo" }#bonjour tout le monde#
 
 # string: encoding after
-#bonjour tout le monde#{ 'meow mix' :#bonjour tout le monde#s#bonjour tout le monde#:#bonjour tout le monde#latin3#bonjour tout le monde#}#bonjour tout le monde#
+#bonjour tout le monde#[#bonjour tout le monde#'meow mix' :#bonjour tout le monde#s#bonjour tout le monde#:#bonjour tout le monde#latin3#bonjour tout le monde#]#bonjour tout le monde#
 
 # current offset setting
-#bonjour tout le monde#<#bonjour tout le monde#18#bonjour tout le monde#>#bonjour tout le monde#{ICITTE-18:8}
+#bonjour tout le monde#<#bonjour tout le monde#18#bonjour tout le monde#>#bonjour tout le monde#[ICITTE-18:8]
 
 # current offset alignment
 #bonjour tout le monde#@#bonjour tout le monde#64#bonjour tout le monde#~#bonjour tout le monde#ffh#bonjour tout le monde#
@@ -41,7 +41,7 @@ a#bonjour tout le monde#a#bonjour tout le monde#bb#bonjour tout le monde#
 #bonjour tout le monde#+#bonjour tout le monde#{ ICITTE+8+4+2+1+1 }#bonjour tout le monde#~#bonjour tout le monde#0xcc#bonjour tout le monde#
 
 # label
-#bonjour tout le monde#<#bonjour tout le monde#salut#bonjour tout le monde#>#bonjour tout le monde#{salut-ICITTE:8}
+#bonjour tout le monde#<#bonjour tout le monde#salut#bonjour tout le monde#>#bonjour tout le monde#[salut-ICITTE:8]
 
 # group
 #bonjour tout le monde#(#bonjour tout le monde#aa#bonjour tout le monde#)#bonjour tout le monde#
@@ -57,7 +57,7 @@ a#bonjour tout le monde#a#bonjour tout le monde#bb#bonjour tout le monde#
 
 # macro definition block
 #bonjour tout le monde#!macro#bonjour tout le monde#gang#bonjour tout le monde#(#bonjour tout le monde#meow#bonjour tout le monde#,#bonjour tout le monde#mix#bonjour tout le monde#)#bonjour tout le monde#
-  aa {meow:8} bb {mix:8}
+  aa [meow:8] bb [mix:8]
 #bonjour tout le monde#!end#bonjour tout le monde#
 
 # macro expansion

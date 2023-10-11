@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.21.0"
+__version__ = "0.22.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -716,6 +716,21 @@ class _Parser:
         self._label_names = set(labels.keys())
         self._var_names = set(variables.keys())
         self._macro_defs = {}  # type: _MacroDefsT
+        self._base_item_parse_funcs = [
+            self._try_parse_byte,
+            self._try_parse_str,
+            self._try_parse_val,
+            self._try_parse_var_assign,
+            self._try_parse_set_bo,
+            self._try_parse_label_or_set_offset,
+            self._try_parse_align_offset,
+            self._try_parse_fill_until,
+            self._try_parse_group,
+            self._try_parse_rep_block,
+            self._try_parse_cond_block,
+            self._try_parse_macro_exp,
+            self._try_parse_trans_block,
+        ]
         self._parse()
 
     # Result (main group).
@@ -795,7 +810,7 @@ class _Parser:
     _comment_pat = re.compile(r"#[^#]*?(?:$|#)", re.M)
     _ws_or_comments_pat = re.compile(r"(?:\s|{})*".format(_comment_pat.pattern), re.M)
     _ws_or_syms_or_comments_pat = re.compile(
-        r"(?:[\s/\\?&:;.,[\]_=|-]|{})*".format(_comment_pat.pattern), re.M
+        r"(?:[\s/\\?&:;.,_=|-]|{})*".format(_comment_pat.pattern), re.M
     )
 
     # Skips as many whitespaces and comments as possible, but not
@@ -1141,94 +1156,113 @@ class _Parser:
         return expr_str, expr
 
     # Patterns for _try_parse_val()
-    _val_expr_pat = re.compile(r"([^}:]+):\s*")
+    _val_prefix_pat = re.compile(r"\[")
+    _val_expr_pat = re.compile(r"([^\]:]+):")
     _fl_num_len_fmt_pat = re.compile(r"8|16|24|32|40|48|56|64")
     _leb128_int_fmt_pat = re.compile(r"(u|s)leb128")
+    _val_suffix_pat = re.compile(r"]")
 
     # Tries to parse a value (number or string) and format (fixed length
     # in bits, `uleb128`, `sleb128`, or `s:` followed with an encoding
     # name), returning an item on success.
     def _try_parse_val(self):
-        begin_text_loc = self._text_loc
-
-        # Match
-        m_expr = self._try_parse_pat(self._val_expr_pat)
-
-        if m_expr is None:
+        # Match prefix
+        if self._try_parse_pat(self._val_prefix_pat) is None:
             # No match
             return
 
+        # Expect expression and `:`
+        self._skip_ws_and_comments()
+        expr_text_loc = self._text_loc
+        m = self._expect_pat(self._val_expr_pat, "Expecting an expression")
+
         # Create an expression node from the expression string
-        expr_str, expr = self._ast_expr_from_str(m_expr.group(1), begin_text_loc)
+        expr_str, expr = self._ast_expr_from_str(m.group(1), expr_text_loc)
 
         # Fixed length?
         self._skip_ws_and_comments()
         m_fmt = self._try_parse_pat(self._fl_num_len_fmt_pat)
 
-        if m_fmt is None:
+        if m_fmt is not None:
+            # Create fixed-length number item
+            item = _FlNum(
+                expr_str,
+                expr,
+                int(m_fmt.group(0)),
+                expr_text_loc,
+            )
+        else:
             # LEB128?
             m_fmt = self._try_parse_pat(self._leb128_int_fmt_pat)
 
-            if m_fmt is None:
+            if m_fmt is not None:
+                # Create LEB128 integer item
+                cls = _ULeb128Int if m_fmt.group(1) == "u" else _SLeb128Int
+                item = cls(expr_str, expr, expr_text_loc)
+            else:
                 # String encoding?
                 codec = self._try_parse_str_encoding(True)
 
-                if codec is None:
+                if codec is not None:
+                    # Create string item
+                    item = _Str(expr_str, expr, codec, expr_text_loc)
+                else:
                     # At this point it's invalid
                     self._raise_error(
                         "Expecting a fixed length (multiple of eight bits), `uleb128`, `sleb128`, or `s:` followed with a valid encoding (`u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`)"
                     )
-                else:
-                    # Return string item
-                    return _Str(expr_str, expr, codec, begin_text_loc)
 
-            # Return LEB128 integer item
-            cls = _ULeb128Int if m_fmt.group(1) == "u" else _SLeb128Int
-            return cls(expr_str, expr, begin_text_loc)
-        else:
-            # Return fixed-length number item
-            return _FlNum(
-                expr_str,
-                expr,
-                int(m_fmt.group(0)),
-                begin_text_loc,
-            )
+        # Expect `]`
+        self._skip_ws_and_comments()
+        m = self._expect_pat(self._val_suffix_pat, "Expecting `]`")
+
+        # Return item
+        return item
 
     # Patterns for _try_parse_var_assign()
-    _var_assign_name_equal_pat = re.compile(
-        r"({})\s*=(?!=)".format(_py_name_pat.pattern)
-    )
+    _var_assign_prefix_pat = re.compile(r"\{")
+    _var_assign_equal_pat = re.compile(r"=")
     _var_assign_expr_pat = re.compile(r"[^}]+")
+    _var_assign_suffix_pat = re.compile(r"\}")
 
     # Tries to parse a variable assignment, returning a variable
     # assignment item on success.
     def _try_parse_var_assign(self):
-        begin_text_loc = self._text_loc
-
-        # Match
-        m = self._try_parse_pat(self._var_assign_name_equal_pat)
-
-        if m is None:
+        # Match prefix
+        if self._try_parse_pat(self._var_assign_prefix_pat) is None:
             # No match
             return
 
-        # Validate name
-        name = m.group(1)
+        # Expect a name
+        self._skip_ws_and_comments()
+        name_text_loc = self._text_loc
+        m = self._expect_pat(_py_name_pat, "Expecting a valid Python name")
+        name = m.group(0)
 
+        # Expect `=`
+        self._skip_ws_and_comments()
+        self._expect_pat(self._var_assign_equal_pat, "Expecting `=`")
+
+        # Expect expression
+        self._skip_ws_and_comments()
+        expr_text_loc = self._text_loc
+        m_expr = self._expect_pat(self._var_assign_expr_pat, "Expecting an expression")
+
+        # Expect `}`
+        self._skip_ws_and_comments()
+        self._expect_pat(self._var_assign_suffix_pat, "Expecting `}`")
+
+        # Validate name
         if name == _icitte_name:
             _raise_error(
-                "`{}` is a reserved variable name".format(_icitte_name), begin_text_loc
+                "`{}` is a reserved variable name".format(_icitte_name), name_text_loc
             )
 
         if name in self._label_names:
-            _raise_error("Existing label named `{}`".format(name), begin_text_loc)
-
-        # Expect an expression
-        self._skip_ws_and_comments()
-        m = self._expect_pat(self._var_assign_expr_pat, "Expecting an expression")
+            _raise_error("Existing label named `{}`".format(name), name_text_loc)
 
         # Create an expression node from the expression string
-        expr_str, expr = self._ast_expr_from_str(m.group(0), begin_text_loc)
+        expr_str, expr = self._ast_expr_from_str(m_expr.group(0), expr_text_loc)
 
         # Add to known variable names
         self._var_names.add(name)
@@ -1238,66 +1272,32 @@ class _Parser:
             name,
             expr_str,
             expr,
-            begin_text_loc,
+            name_text_loc,
         )
 
     # Pattern for _try_parse_set_bo()
-    _bo_pat = re.compile(r"[bl]e")
+    _set_bo_pat = re.compile(r"!([bl]e)\b")
 
-    # Tries to parse a byte order name, returning a byte order setting
-    # item on success.
+    # Tries to parse a byte order setting, returning a byte order
+    # setting item on success.
     def _try_parse_set_bo(self):
         begin_text_loc = self._text_loc
 
         # Match
-        m = self._try_parse_pat(self._bo_pat)
+        m = self._try_parse_pat(self._set_bo_pat)
 
         if m is None:
             # No match
             return
 
         # Return corresponding item
-        if m.group(0) == "be":
-            return _SetBo(ByteOrder.BE, begin_text_loc)
+        if m.group(1) == "be":
+            bo = ByteOrder.BE
         else:
-            assert m.group(0) == "le"
-            return _SetBo(ByteOrder.LE, begin_text_loc)
+            assert m.group(1) == "le"
+            bo = ByteOrder.LE
 
-    # Patterns for _try_parse_val_or_bo()
-    _val_var_assign_set_bo_prefix_pat = re.compile(r"\{")
-    _val_var_assign_set_bo_suffix_pat = re.compile(r"\}")
-
-    # Tries to parse a value, a variable assignment, or a byte order
-    # setting, returning an item on success.
-    def _try_parse_val_or_var_assign_or_set_bo(self):
-        # Match prefix
-        if self._try_parse_pat(self._val_var_assign_set_bo_prefix_pat) is None:
-            # No match
-            return
-
-        self._skip_ws_and_comments()
-
-        # Variable assignment item?
-        item = self._try_parse_var_assign()
-
-        if item is None:
-            # Value item?
-            item = self._try_parse_val()
-
-            if item is None:
-                # Byte order setting item?
-                item = self._try_parse_set_bo()
-
-                if item is None:
-                    # At this point it's invalid
-                    self._raise_error(
-                        "Expecting a fixed-length number, a string, a variable assignment, or a byte order setting"
-                    )
-
-        # Expect suffix
-        self._skip_ws_and_comments()
-        self._expect_pat(self._val_var_assign_set_bo_suffix_pat, "Expecting `}`")
-        return item
+        return _SetBo(bo, begin_text_loc)
 
     # Tries to parse an offset setting value (after the initial `<`),
     # returning an offset item on success.
@@ -1894,74 +1894,14 @@ class _Parser:
         # Return item
         return _MacroExp(name, params, begin_text_loc)
 
-    # Tries to parse a base item (anything except a repetition),
-    # returning it on success.
+    # Tries to parse a base item (anything except a post-item
+    # repetition), returning it on success.
     def _try_parse_base_item(self):
-        # Byte item?
-        item = self._try_parse_byte()
+        for func in self._base_item_parse_funcs:
+            item = func()
 
-        if item is not None:
-            return item
-
-        # String item?
-        item = self._try_parse_str()
-
-        if item is not None:
-            return item
-
-        # Value, variable assignment, or byte order setting item?
-        item = self._try_parse_val_or_var_assign_or_set_bo()
-
-        if item is not None:
-            return item
-
-        # Label or offset setting item?
-        item = self._try_parse_label_or_set_offset()
-
-        if item is not None:
-            return item
-
-        # Offset alignment item?
-        item = self._try_parse_align_offset()
-
-        if item is not None:
-            return item
-
-        # Filling item?
-        item = self._try_parse_fill_until()
-
-        if item is not None:
-            return item
-
-        # Group item?
-        item = self._try_parse_group()
-
-        if item is not None:
-            return item
-
-        # Repetition block item?
-        item = self._try_parse_rep_block()
-
-        if item is not None:
-            return item
-
-        # Conditional block item?
-        item = self._try_parse_cond_block()
-
-        if item is not None:
-            return item
-
-        # Macro expansion item?
-        item = self._try_parse_macro_exp()
-
-        if item is not None:
-            return item
-
-        # Transformation block item?
-        item = self._try_parse_trans_block()
-
-        if item is not None:
-            return item
+            if item is not None:
+                return item
 
     # Pattern for _try_parse_rep_post()
     _rep_post_prefix_pat = re.compile(r"\*")
