@@ -1,0 +1,12 @@
+!be
+11 22 33 44
+[0xaabbccdd : 32]
+[0xaabbccdd : 32le]
+[0xaabbccdd : 32]
+ff ff ff ff
+---
+11 22 33 44
+aa bb cc dd
+dd cc bb aa
+aa bb cc dd
+ff ff ff ff

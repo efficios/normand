@@ -143,14 +143,14 @@ Input:
 {strength = 4}
 !be 67 <lbl> 44 $178 [(end - lbl) * 8 + strength : 16] $99 <end>
 !le [-1993 : 32]
-[-3.141593 : 64]
+[-3.141593 : 64be]
 ----
 +
 Output:
 +
 ----
-67 44 b2 00 2c 63 37 f8  ff ff 7f bd c2 82 fb 21
-09 c0
+67 44 b2 00 2c 63 37 f8  ff ff c0 09 21 fb 82 c2
+bd 7f
 ----
 +
 The encoded number is the evaluation of a valid {py3} expression which
@@ -511,7 +511,7 @@ padding bytes to make the current offset satisfy a given alignment.
 
 |[[cur-bo]] Current byte order
 |
-The current byte order has an effect on the encoding of
+The current byte order can have an effect on the encoding of
 <<fixed-length-number,fixed-length numbers>>.
 
 A <<current-byte-order-setting,current byte order setting>> may change
@@ -542,8 +542,8 @@ The available items are:
   little endian).
 
 * A <<fixed-length-number,fixed-length number>> (integer or
-  floating point) using the <<cur-bo,current byte order>> and of which
-  the value is the result of a {py3} expression.
+  floating point), possibly using the <<cur-bo,current byte order>>, and
+  of which the value is the result of a {py3} expression.
 
 * An <<leb128-integer,LEB128 integer>> of which the value is the result
   of a {py3} expression.
@@ -903,8 +903,10 @@ The available lengths are 8, 16, 24, 32, 40, 48, 56, and 64.
 +
 The available length are 32 (_binary32_) and 64 (_binary64_).
 
-The value is the result of evaluating a {py3} expression using the
-<<cur-bo,current byte order>>.
+The value is the result of evaluating a {py3} expression.
+
+The byte order to use to encode the value is either directly specified
+or is the <<cur-bo,current byte order>>.
 
 A fixed-length number is:
 
@@ -936,14 +938,27 @@ The expression evaluates to a `float` value::
     `32` and `64`.
 --
 
+. **Optional**: a suffix of the previous encoding length, without
+  any whitespace, amongst:
++
+--
+[horizontal]
+`be`:: Encode in big endian.
+`le`:: Encode in little endian.
+--
++
+Without this suffix, the encoding byte order is the <<cur-bo,current
+byte order>> which must be defined if the encoding length is greater
+than eight.
+
 . The `]` suffix.
 
 ====
 Input:
 
 ----
-!le [345:16]
-!be [-0xabcd:32]
+[345:16le]
+[-0xabcd:32be]
 ----
 
 Output:
@@ -993,8 +1008,7 @@ Output:
 Input:
 
 ----
-!le
-[2 * 0.0529 : 32]
+[2 * 0.0529 : 32le]
 ----
 
 Output:

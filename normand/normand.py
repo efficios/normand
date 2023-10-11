@@ -296,26 +296,38 @@ class _VarAssign(_Item, _ExprMixin):
 # Fixed-length number, possibly needing more than one byte.
 class _FlNum(_ScalarItem, _RepableItem, _ExprMixin):
     def __init__(
-        self, expr_str: str, expr: ast.Expression, len: int, text_loc: TextLocation
+        self,
+        expr_str: str,
+        expr: ast.Expression,
+        len: int,
+        bo: Optional[ByteOrder],
+        text_loc: TextLocation,
     ):
         super().__init__(text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
         self._len = len
+        self._bo = bo
 
     # Length (bits).
     @property
     def len(self):
         return self._len
 
+    # Byte order override.
+    @property
+    def bo(self):
+        return self._bo
+
     @property
     def size(self):
         return self._len // 8
 
     def __repr__(self):
-        return "_FlNum({}, {}, {}, {})".format(
+        return "_FlNum({}, {}, {}, {}, {})".format(
             repr(self._expr_str),
             repr(self._expr),
             repr(self._len),
+            repr(self._bo),
             repr(self._text_loc),
         )
 
@@ -1155,16 +1167,26 @@ class _Parser:
 
         return expr_str, expr
 
+    # Returns a `ByteOrder` value from the _valid_ byte order string
+    # `bo_str`.
+    @staticmethod
+    def _bo_from_str(bo_str: str):
+        return {
+            "be": ByteOrder.BE,
+            "le": ByteOrder.LE,
+        }[bo_str]
+
     # Patterns for _try_parse_val()
     _val_prefix_pat = re.compile(r"\[")
     _val_expr_pat = re.compile(r"([^\]:]+):")
-    _fl_num_len_fmt_pat = re.compile(r"8|16|24|32|40|48|56|64")
+    _fl_num_len_fmt_pat = re.compile(r"(?P<len>8|16|24|32|40|48|56|64)(?P<bo>[bl]e)?")
     _leb128_int_fmt_pat = re.compile(r"(u|s)leb128")
     _val_suffix_pat = re.compile(r"]")
 
     # Tries to parse a value (number or string) and format (fixed length
-    # in bits, `uleb128`, `sleb128`, or `s:` followed with an encoding
-    # name), returning an item on success.
+    # in bits and optional byte order override, `uleb128`, `sleb128`, or
+    # `s:` followed with an encoding name), returning an item on
+    # success.
     def _try_parse_val(self):
         # Match prefix
         if self._try_parse_pat(self._val_prefix_pat) is None:
@@ -1184,11 +1206,18 @@ class _Parser:
         m_fmt = self._try_parse_pat(self._fl_num_len_fmt_pat)
 
         if m_fmt is not None:
+            # Byte order override
+            if m_fmt.group("bo") is None:
+                bo = None
+            else:
+                bo = self._bo_from_str(m_fmt.group("bo"))
+
             # Create fixed-length number item
             item = _FlNum(
                 expr_str,
                 expr,
-                int(m_fmt.group(0)),
+                int(m_fmt.group("len")),
+                bo,
                 expr_text_loc,
             )
         else:
@@ -1209,7 +1238,7 @@ class _Parser:
                 else:
                     # At this point it's invalid
                     self._raise_error(
-                        "Expecting a fixed length (multiple of eight bits), `uleb128`, `sleb128`, or `s:` followed with a valid encoding (`u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`)"
+                        "Expecting a fixed length (multiple of eight bits and optional `be` or `le`), `uleb128`, `sleb128`, or `s:` followed with a valid encoding (`u8`, `u16be`, `u16le`, `u32be`, `u32le`, or `latin1` to `latin10`)"
                     )
 
         # Expect `]`
@@ -2351,10 +2380,19 @@ class _Gen:
             item, state, accept_float=True, accept_str=True
         )
 
+    # Returns the effective byte order to use to encode the fixed-length
+    # number `item` considering the current state `state`.
+    @staticmethod
+    def _fl_num_item_effective_bo(item: _FlNum, state: _GenState):
+        return state.bo if item.bo is None else item.bo
+
     # Handles the fixed-length number item `item`.
     def _handle_fl_num_item(self, item: _FlNum, state: _GenState):
+        # Effective byte order
+        bo = self._fl_num_item_effective_bo(item, state)
+
         # Validate current byte order
-        if state.bo is None and item.len > 8:
+        if bo is None and item.len > 8:
             _raise_error_for_item(
                 "Current byte order isn't defined at first fixed-length number (`{}`) to encode on more than 8 bits".format(
                     item.expr_str
@@ -2620,8 +2658,10 @@ class _Gen:
         return self._item_handlers[type(item)](item, state)
 
     # Generates the data for a fixed-length integer item instance having
-    # the value `val` and returns it.
-    def _gen_fl_int_item_inst_data(self, val: int, item: _FlNum, state: _GenState):
+    # the value `val` and the effective byte order `bo` and returns it.
+    def _gen_fl_int_item_inst_data(
+        self, val: int, bo: Optional[ByteOrder], item: _FlNum
+    ):
         # Validate range
         if val < -(2 ** (item.len - 1)) or val > 2**item.len - 1:
             _raise_error_for_item(
@@ -2635,7 +2675,7 @@ class _Gen:
         # value of `item.len`).
         data = struct.pack(
             "{}{}".format(
-                ">" if state.bo in (None, ByteOrder.BE) else "<",
+                ">" if bo in (None, ByteOrder.BE) else "<",
                 "Q" if val >= 0 else "q",
             ),
             val,
@@ -2644,20 +2684,23 @@ class _Gen:
         # Keep only the requested length
         len_bytes = item.len // 8
 
-        if state.bo in (None, ByteOrder.BE):
+        if bo in (None, ByteOrder.BE):
             # Big endian: keep last bytes
             data = data[-len_bytes:]
         else:
             # Little endian: keep first bytes
-            assert state.bo == ByteOrder.LE
+            assert bo == ByteOrder.LE
             data = data[:len_bytes]
 
         # Return data
         return data
 
     # Generates the data for a fixed-length floating point number item
-    # instance having the value `val` and returns it.
-    def _gen_fl_float_item_inst_data(self, val: float, item: _FlNum, state: _GenState):
+    # instance having the value `val` and the effective byte order `bo`
+    # and returns it.
+    def _gen_fl_float_item_inst_data(
+        self, val: float, bo: Optional[ByteOrder], item: _FlNum
+    ):
         # Validate length
         if item.len not in (32, 64):
             _raise_error_for_item(
@@ -2670,7 +2713,7 @@ class _Gen:
         # Encode and return result
         return struct.pack(
             "{}{}".format(
-                ">" if state.bo in (None, ByteOrder.BE) else "<",
+                ">" if bo in (None, ByteOrder.BE) else "<",
                 "f" if item.len == 32 else "d",
             ),
             val,
@@ -2679,15 +2722,18 @@ class _Gen:
     # Generates the data for a fixed-length number item instance and
     # returns it.
     def _gen_fl_num_item_inst_data(self, item: _FlNum, state: _GenState):
+        # Effective byte order
+        bo = self._fl_num_item_effective_bo(item, state)
+
         # Compute value
         val = self._eval_item_expr(item, state, True)
 
         # Handle depending on type
         if type(val) is int:
-            return self._gen_fl_int_item_inst_data(val, item, state)
+            return self._gen_fl_int_item_inst_data(val, bo, item)
         else:
             assert type(val) is float
-            return self._gen_fl_float_item_inst_data(val, item, state)
+            return self._gen_fl_float_item_inst_data(val, bo, item)
 
     # Generates the data for all the fixed-length number item instances
     # and writes it at the correct offset within `self._data`.
