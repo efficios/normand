@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.22, meaning both the Normand
+WARNING: This version of Normand is 0.23, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]

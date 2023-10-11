@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.22.0"
+__version__ = "0.23.0"
 __all__ = [
     "__author__",
     "__version__",
