@@ -493,7 +493,7 @@ current state:
 |
 The current offset has an effect on the value of <<label,labels>> and of
 the special `ICITTE` name in <<fixed-length-number,fixed-length
-number>>, <<leb-128-integer,LEB128 integer>>, <<string,string>>,
+number>>, <<leb128-integer,LEB128 integer>>, <<string,string>>,
 <<filling,filling>>, <<variable-assignment,variable assignment>>,
 <<conditional-block,conditional block>>, <<repetition-block,repetition
 block>>, <<macro-expansion,macro expansion>>, and
