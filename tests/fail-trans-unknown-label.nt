@@ -1,0 +1,8 @@
+!transform base64
+  "meow"
+  {far:8}
+  "mix"
+  <far>
+!end
+---
+3:4 - Invalid expression `far`: failed to evaluate within a transformation block

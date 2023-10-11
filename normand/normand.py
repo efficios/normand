@@ -30,7 +30,7 @@
 # Upstream repository: <https://github.com/efficios/normand>.
 
 __author__ = "Philippe Proulx"
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 __all__ = [
     "__author__",
     "__version__",
@@ -47,12 +47,17 @@ __all__ = [
 import re
 import abc
 import ast
+import bz2
 import sys
 import copy
 import enum
+import gzip
 import math
+import base64
+import quopri
 import struct
 import typing
+import functools
 from typing import Any, Set, Dict, List, Union, Pattern, Callable, NoReturn, Optional
 
 
@@ -356,7 +361,6 @@ class _Str(_Item, _RepableItem, _ExprMixin):
 
     def __repr__(self):
         return "_Str({}, {}, {}, {})".format(
-            self.__class__.__name__,
             repr(self._expr_str),
             repr(self._expr),
             repr(self._codec),
@@ -380,22 +384,20 @@ class _Group(_Item, _RepableItem):
 
 
 # Repetition item.
-class _Rep(_Item, _ExprMixin):
+class _Rep(_Group, _ExprMixin):
     def __init__(
-        self, item: _Item, expr_str: str, expr: ast.Expression, text_loc: TextLocation
+        self,
+        items: List[_Item],
+        expr_str: str,
+        expr: ast.Expression,
+        text_loc: TextLocation,
     ):
-        super().__init__(text_loc)
+        super().__init__(items, text_loc)
         _ExprMixin.__init__(self, expr_str, expr)
-        self._item = item
-
-    # Item to repeat.
-    @property
-    def item(self):
-        return self._item
 
     def __repr__(self):
         return "_Rep({}, {}, {}, {})".format(
-            repr(self._item),
+            repr(self._items),
             repr(self._expr_str),
             repr(self._expr),
             repr(self._text_loc),
@@ -406,8 +408,8 @@ class _Rep(_Item, _ExprMixin):
 class _Cond(_Item, _ExprMixin):
     def __init__(
         self,
-        true_item: _Item,
-        false_item: _Item,
+        true_item: _Group,
+        false_item: _Group,
         expr_str: str,
         expr: ast.Expression,
         text_loc: TextLocation,
@@ -437,15 +439,48 @@ class _Cond(_Item, _ExprMixin):
         )
 
 
-# Macro definition item.
-class _MacroDef(_Item):
+# Transformation.
+class _Trans(_Group, _RepableItem):
     def __init__(
-        self, name: str, param_names: List[str], group: _Group, text_loc: TextLocation
+        self,
+        items: List[_Item],
+        name: str,
+        func: Callable[[Union[bytes, bytearray]], bytes],
+        text_loc: TextLocation,
     ):
-        super().__init__(text_loc)
+        super().__init__(items, text_loc)
+        self._name = name
+        self._func = func
+
+    @property
+    def name(self):
+        return self._name
+
+    # Transforms the data `data`.
+    def trans(self, data: Union[bytes, bytearray]):
+        return self._func(data)
+
+    def __repr__(self):
+        return "_Trans({}, {}, {}, {})".format(
+            repr(self._items),
+            repr(self._name),
+            repr(self._func),
+            repr(self._text_loc),
+        )
+
+
+# Macro definition item.
+class _MacroDef(_Group):
+    def __init__(
+        self,
+        name: str,
+        param_names: List[str],
+        items: List[_Item],
+        text_loc: TextLocation,
+    ):
+        super().__init__(items, text_loc)
         self._name = name
         self._param_names = param_names
-        self._group = group
 
     # Name.
     @property
@@ -457,16 +492,11 @@ class _MacroDef(_Item):
     def param_names(self):
         return self._param_names
 
-    # Contained items.
-    @property
-    def group(self):
-        return self._group
-
     def __repr__(self):
         return "_MacroDef({}, {}, {}, {})".format(
             repr(self._name),
             repr(self._param_names),
-            repr(self._group),
+            repr(self._items),
             repr(self._text_loc),
         )
 
@@ -1560,7 +1590,6 @@ class _Parser:
 
         # Parse items
         self._skip_ws_and_comments_and_syms()
-        items_text_loc = self._text_loc
         items = self._parse_items()
 
         # Expect end of block
@@ -1570,7 +1599,7 @@ class _Parser:
         )
 
         # Return item
-        return _Rep(_Group(items, items_text_loc), expr_str, expr, begin_text_loc)
+        return _Rep(items, expr_str, expr, begin_text_loc)
 
     # Pattern for _try_parse_cond_block()
     _cond_block_prefix_pat = re.compile(r"!if\b")
@@ -1618,6 +1647,87 @@ class _Parser:
             _Group(false_items, false_items_text_loc),
             expr_str,
             expr,
+            begin_text_loc,
+        )
+
+    # Pattern for _try_parse_trans_block()
+    _trans_block_prefix_pat = re.compile(r"!t(?:ransform)?\b")
+    _trans_block_type_pat = re.compile(
+        r"(?:(?:base|b)64(?:u)?|(?:base|b)(?:16|32)|(?:ascii|a|base|b)85(?:p)?|(?:quopri|qp)(?:t)?|gzip|gz|bzip2|bz2)\b"
+    )
+
+    # Tries to parse a transformation block, returning a transformation
+    # block item on success.
+    def _try_parse_trans_block(self):
+        begin_text_loc = self._text_loc
+
+        # Match prefix
+        if self._try_parse_pat(self._trans_block_prefix_pat) is None:
+            # No match
+            return
+
+        # Expect type
+        self._skip_ws_and_comments()
+        m = self._expect_pat(
+            self._trans_block_type_pat, "Expecting a known transformation type"
+        )
+
+        # Parse items
+        self._skip_ws_and_comments_and_syms()
+        items = self._parse_items()
+
+        # Expect end of block
+        self._expect_pat(
+            self._block_end_pat,
+            "Expecting an item or `!end` (end of transformation block)",
+        )
+
+        # Choose encoding function
+        enc = m.group(0)
+
+        if enc in ("base64", "b64"):
+            func = base64.standard_b64encode
+            name = "standard Base64"
+        elif enc in ("base64u", "b64u"):
+            func = base64.urlsafe_b64encode
+            name = "URL-safe Base64"
+        elif enc in ("base32", "b32"):
+            func = base64.b32encode
+            name = "Base32"
+        elif enc in ("base16", "b16"):
+            func = base64.b16encode
+            name = "Base16"
+        elif enc in ("ascii85", "a85"):
+            func = base64.a85encode
+            name = "Ascii85"
+        elif enc in ("ascii85p", "a85p"):
+            func = functools.partial(base64.a85encode, pad=True)
+            name = "padded Ascii85"
+        elif enc in ("base85", "b85"):
+            func = base64.b85encode
+            name = "Base85"
+        elif enc in ("base85p", "b85p"):
+            func = functools.partial(base64.b85encode, pad=True)
+            name = "padded Base85"
+        elif enc in ("quopri", "qp"):
+            func = quopri.encodestring
+            name = "MIME quoted-printable"
+        elif enc in ("quoprit", "qpt"):
+            func = functools.partial(quopri.encodestring, quotetabs=True)
+            name = "MIME quoted-printable (with quoted tabs)"
+        elif enc in ("gzip", "gz"):
+            func = gzip.compress
+            name = "gzip"
+        else:
+            assert enc in ("bzip2", "bz2")
+            func = bz2.compress
+            name = "bzip2"
+
+        # Return item
+        return _Trans(
+            items,
+            name,
+            func,
             begin_text_loc,
         )
 
@@ -1687,7 +1797,6 @@ class _Parser:
 
         # Expect items
         self._skip_ws_and_comments_and_syms()
-        items_text_loc = self._text_loc
         old_var_names = self._var_names.copy()
         old_label_names = self._label_names.copy()
         self._var_names = set()  # type: Set[str]
@@ -1702,9 +1811,7 @@ class _Parser:
         )
 
         # Register macro
-        self._macro_defs[name] = _MacroDef(
-            name, param_names, _Group(items, items_text_loc), begin_text_loc
-        )
+        self._macro_defs[name] = _MacroDef(name, param_names, items, begin_text_loc)
 
         return True
 
@@ -1844,8 +1951,14 @@ class _Parser:
         if item is not None:
             return item
 
-        # Macro expansion?
+        # Macro expansion item?
         item = self._try_parse_macro_exp()
+
+        if item is not None:
+            return item
+
+        # Transformation block item?
+        item = self._try_parse_trans_block()
 
         if item is not None:
             return item
@@ -1885,7 +1998,7 @@ class _Parser:
             rep_ret = self._try_parse_rep_post()
 
             if rep_ret is not None:
-                item = _Rep(item, *rep_ret, text_loc=rep_text_loc)
+                item = _Rep([item], *rep_ret, text_loc=rep_text_loc)
 
         items.append(item)
         return True
@@ -2161,6 +2274,7 @@ class _Gen:
         self._macro_defs = macro_defs
         self._fl_num_item_insts = []  # type: List[_FlNumItemInst]
         self._parse_error_msgs = []  # type: List[ParseErrorMessage]
+        self._in_trans = False
         self._gen(group, _GenState(variables, labels, offset, bo))
 
     # Generated bytes.
@@ -2313,6 +2427,14 @@ class _Gen:
         try:
             data = self._gen_fl_num_item_inst_data(item, state)
         except Exception:
+            if self._in_trans:
+                _raise_error_for_item(
+                    "Invalid expression `{}`: failed to evaluate within a transformation block".format(
+                        item.expr_str
+                    ),
+                    item,
+                )
+
             self._fl_num_item_insts.append(
                 _FlNumItemInst(
                     item,
@@ -2425,20 +2547,51 @@ class _Gen:
                 item,
             )
 
-        # Generate item data `mul` times
+        # Generate group data `mul` times
         for _ in range(mul):
-            self._handle_item(item.item, state)
+            self._handle_group_item(item, state)
 
     # Handles the conditional item `item`.
     def _handle_cond_item(self, item: _Cond, state: _GenState):
         # Compute the conditional value
         val = _Gen._eval_item_expr(item, state)
 
-        # Generate item data if needed
+        # Generate selected group data
         if val:
-            self._handle_item(item.true_item, state)
+            self._handle_group_item(item.true_item, state)
         else:
-            self._handle_item(item.false_item, state)
+            self._handle_group_item(item.false_item, state)
+
+    # Handles the transformation item `item`.
+    def _handle_trans_item(self, item: _Trans, state: _GenState):
+        init_in_trans = self._in_trans
+        self._in_trans = True
+        init_data_len = len(self._data)
+        init_offset = state.offset
+
+        # Generate group data
+        self._handle_group_item(item, state)
+
+        # Remove and keep group data
+        to_trans = self._data[init_data_len:]
+        del self._data[init_data_len:]
+
+        # Encode group data and append to current data
+        try:
+            transformed = item.trans(to_trans)
+        except Exception as exc:
+            _raise_error_for_item(
+                "Cannot apply the {} transformation to this data: {}".format(
+                    item.name, exc
+                ),
+                item,
+            )
+
+        self._data += transformed
+
+        # Update offset and restore
+        state.offset = init_offset + len(transformed)
+        self._in_trans = init_in_trans
 
     # Evaluates the parameters of the macro expansion item `item`
     # considering the initial state `init_state` and returns a new state
@@ -2478,7 +2631,7 @@ class _Gen:
                 )
             )
             self._parse_error_msgs.append(parse_error_msg)
-            self._handle_item(self._macro_defs[item.name].group, exp_state)
+            self._handle_group_item(self._macro_defs[item.name], exp_state)
             self._parse_error_msgs.pop()
         except ParseError as exc:
             _augment_error(exc, parse_error_msg_text, item.text_loc)
@@ -2636,6 +2789,7 @@ class _Gen:
             _SetOffset: self._handle_set_offset_item,
             _SLeb128Int: self._handle_leb128_int_item,
             _Str: self._handle_str_item,
+            _Trans: self._handle_trans_item,
             _ULeb128Int: self._handle_leb128_int_item,
             _VarAssign: self._handle_var_assign_item,
         }  # type: Dict[type, Callable[[Any, _GenState], None]]

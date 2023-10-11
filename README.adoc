@@ -29,7 +29,7 @@ _**Normand**_ is a text-to-binary processor with its own language.
 This package offers both a portable {py3} module and a command-line
 tool.
 
-WARNING: This version of Normand is 0.20, meaning both the Normand
+WARNING: This version of Normand is 0.21, meaning both the Normand
 language and the module/CLI interface aren't stable.
 
 ifdef::env-github[]
@@ -277,6 +277,29 @@ ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••�
 ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
 ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  ┆ ••••••••••••••••
 ff ff ff ff ff ff ff ff  c8                       ┆ •••••••••
+----
+
+Transformation::
++
+Input:
++
+----
+"end of file @ " {end:8}
+
+!transform gzip
+  "this part will be gzipped"
+!end
+
+<end>
+----
++
+Output:
++
+----
+65 6e 64 20 6f 66 20 66  69 6c 65 20 40 20 3c 1f  ┆ end of file @ <•
+8b 08 00 7b 7b 26 65 02  ff 2b c9 c8 2c 56 28 48  ┆ •••{{&e••+••,V(H
+2c 2a 51 28 cf cc c9 51  48 4a 55 48 af ca 2c 28  ┆ ,*Q(•••QHJUH••,(
+48 4d 01 00 d4 cc 5b 8a  19 00 00 00              ┆ HM••••[•••••
 ----
 
 Multilevel grouping::
@@ -548,6 +571,8 @@ This is similar to an assembly label.
 * A <<conditional-block,conditional block>>.
 
 * A <<repetition-block,repetition block>>.
+
+* A <<transformation-block,transformation block>>.
 
 * A <<macro-definition-block,macro definition block>>.
 
@@ -888,8 +913,9 @@ A fixed-length number is:
 For a fixed-length number at some source location{nbsp}__**L**__, this
 expression may contain the name of any accessible <<label,label>> (not
 within a nested group), including the name of a label defined
-after{nbsp}__**L**__, as well as the name of any
-<<variable-assignment,variable>> known at{nbsp}__**L**__.
+after{nbsp}__**L**__ (except within an <<encoded-block,encoded block>>),
+as well as the name of any <<variable-assignment,variable>> known
+at{nbsp}__**L**__.
 +
 The value of the special name `ICITTE` (`int` type) in this expression
 is the <<cur-offset,current offset>> (before encoding the number).
@@ -1546,7 +1572,7 @@ A group is:
 
 . The `(`, `!group`, or `!g` opening.
 
-. Zero or more items.
+. Zero or more items except, recursively, a macro definition block.
 
 . Depending on the group opening:
 +
@@ -1652,12 +1678,14 @@ items).
 For the name `__NAME__`, this is equivalent to the
 `pass:[{]__NAME__pass:[}]` form above.
 
-. Zero or more items to be handled when the condition is true.
+. Zero or more items to be handled when the condition is true
+  except, recursively, a macro definition block.
 
 . **Optional**:
 
 .. The `!else` opening.
-.. Zero or more items to be handled when the condition is false.
+.. Zero or more items to be handled when the condition is false
+   except, recursively, a macro definition block
 
 . The `!end` closing.
 
@@ -1753,7 +1781,7 @@ repeat).
 For the name `__NAME__`, this is equivalent to the
 `pass:[{]__NAME__pass:[}]` form above.
 
-. Zero or more items.
+. Zero or more items except, recursively, a macro definition block.
 
 . The `!end` closing.
 
@@ -1832,6 +1860,178 @@ ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••�
 ff ee ff ee ff ee ff ee  ff ee ff ee ff ee ff ee  ┆ ••••••••••••••••
 ff ee ff ee ff ee ff ee  ff ee ff ee ff 11 22 33  ┆ ••••••••••••••"3
 33 33 63 6f 75 63 6f 75  21                       ┆ 33coucou!
+----
+====
+
+=== Transformation block
+
+A _transformation block_ represents the bytes of one or more items
+transformed into other bytes by a function.
+
+As of this version, Normand only offers a predetermined set of
+transformation functions.
+
+An encoded block is:
+
+. The `!transform` or `!t` opening.
+
+. A transformation function name amongst:
++
+--
+[horizontal]
+`base64`::
+`b64`::
+    Standard https://datatracker.ietf.org/doc/html/rfc4648.html#section-4[Base64].
+
+`base64u`::
+`b64u`::
+    URL-safe Base64, using `-` instead of `pass:[+]` and `_` instead of
+    `/`.
+
+`base32`::
+`b32`::
+    Standard https://datatracker.ietf.org/doc/html/rfc4648.html#section-6[Base32].
+
+`base16`::
+`b16`::
+    Standard https://datatracker.ietf.org/doc/html/rfc4648.html#section-8[Base16].
+
+`ascii85`::
+`a85`::
+    https://en.wikipedia.org/wiki/Ascii85[Ascii85] without padding.
+
+`ascii85p`::
+`a85p`::
+    Ascii85 with padding.
+
+`base85`::
+`b85`::
+    https://en.wikipedia.org/wiki/Ascii85[Base85] (like Git-style binary
+    diffs) without padding.
+
+`base85p`::
+`b85p`::
+    Base85 with padding.
+
+`quopri`::
+`qp`::
+    MIME
+    https://datatracker.ietf.org/doc/html/rfc2045#section-6.7[quoted-printable]
+    without quoted whitespaces.
+
+`quoprit`::
+`qpt`::
+    MIME quoted-printable with quoted whitespaces.
+
+`gzip`::
+`gz`::
+    https://en.wikipedia.org/wiki/Gzip[gzip].
+
+`bzip2`::
+`bz2`::
+    https://en.wikipedia.org/wiki/Bzip2[bzip2].
+--
+
+. Zero or more items except, recursively, a macro definition block.
++
+Any {py3} expression within any of those items may not refer to a future
+<<label,label>>.
++
+The value of the special name `ICITTE` in any {py3} expression within
+any of those items is the <<cur-offset,current offset>> _before_ Normand
+applies the transformation function. Therefore, labels defined within
+those items also have the current offset value _before_ Normand applies
+the transformation function.
+
+. The `!end` closing.
+
+The <<cur-offset,current offset>> after having handled the last item of
+a transformation block is the value of the current offset before
+handling the first item plus the size of the generated (transformed)
+bytes. In other words, <<current-offset-setting,current offset
+settings>> within the items of the block have no impact outside said
+block.
+
+====
+Input:
+
+----
+aa bb cc dd
+
+"size of compressed section: " {end - start : 8}
+
+<start>
+
+!transform bzip2
+  "this will be compressed!"
+  89*100 00*5000
+!end
+
+<end>
+
+"yes!"
+----
+
+Output:
+
+----
+aa bb cc dd 73 69 7a 65  20 6f 66 20 63 6f 6d 70  ┆ ••••size of comp
+72 65 73 73 65 64 20 73  65 63 74 69 6f 6e 3a 20  ┆ ressed section:
+52 42 5a 68 39 31 41 59  26 53 59 68 e1 8c fc 00  ┆ RBZh91AY&SYh••••
+00 33 d1 e0 c0 00 60 00  5e 66 dc 80 00 20 00 80  ┆ •3••••`•^f••• ••
+00 08 20 00 31 40 d3 43  23 26 20 ca 87 a9 a1 e8  ┆ •• •1@•C#& •••••
+18 29 44 80 9c 80 49 bf  cc b3 e8 45 ed e2 76 ad  ┆ •)D•••I••••E••v•
+0f 12 8b 8a d6 cd 40 04  7e 2e e4 8a 70 a1 20 d1  ┆ ••••••@•~.••p• •
+c3 19 f8 79 65 73 21                              ┆ •••yes!
+----
+====
+
+====
+Input:
+
+----
+88*16
+
+!t a85
+  "I am determined to be cheerful and happy in whatever situation "
+  "I may find myself. For I have learned that the greater part of "
+  "our misery or unhappiness is determined not by our circumstance "
+  "but by our disposition."
+!end
+
+@128~99h
+
+!t qp <beg> {ICITTE - beg : 8} * 50 !end
+----
+
+Output:
+
+----
+88 88 88 88 88 88 88 88  88 88 88 88 88 88 88 88  ┆ ••••••••••••••••
+38 4b 5f 47 59 2b 43 6f  26 2a 41 54 44 58 25 44  ┆ 8K_GY+Co&*ATDX%D
+49 6d 3f 24 46 44 69 3a  32 41 4b 59 4a 72 41 53  ┆ Im?$FDi:2AKYJrAS
+23 6d 6f 46 5f 69 31 2f  44 49 61 6c 27 40 3b 70  ┆ #moF_i1/DIal'@;p
+31 32 2b 44 47 5e 39 47  41 28 45 2c 41 54 68 58  ┆ 12+DG^9GA(E,AThX
+2a 2b 45 4d 37 3d 46 5e  5d 42 2b 44 66 2d 5b 68  ┆ *+EM7=F^]B+Df-[h
+2b 44 6b 50 34 2b 44 2c  3e 2a 41 30 3e 60 37 46  ┆ +DkP4+D,>*A0>`7F
+28 4b 30 22 2f 67 2a 57  25 45 5a 64 70 72 42 4f  ┆ (K0"/g*W%EZdprBO
+51 27 71 2b 44 62 55 74  45 63 2c 48 21 2b 45 56  ┆ Q'q+DbUtEc,H!+EV
+3a 2a 46 3c 47 5b 3d 41  4b 59 57 2b 41 52 54 5b  ┆ :*F<G[=AKYW+ART[
+6c 45 5a 66 3d 30 45 63  60 46 42 41 66 75 23 37  ┆ lEZf=0Ec`FBAfu#7
+45 5a 66 34 35 46 28 4b  42 3b 2b 45 29 39 43 46  ┆ EZf45F(KB;+E)9CF
+60 28 6c 24 45 2c 5d 4e  2f 41 54 4d 6f 38 42 6c  ┆ `(l$E,]N/ATMo8Bl
+62 44 2d 41 54 56 4c 28  44 2f 21 6d 21 41 30 3e  ┆ bD-ATVL(D/!m!A0>
+63 2e 46 3c 47 25 3c 2b  45 29 43 43 2b 43 66 2c  ┆ c.F<G%<+E)CC+Cf,
+2b 40 73 29 58 30 46 43  42 26 73 41 4b 59 48 29  ┆ +@s)X0FCB&sAKYH)
+46 3c 47 25 3c 2b 45 29  43 43 2b 43 6f 32 2d 45  ┆ F<G%<+E)CC+Co2-E
+2c 54 66 33 46 44 35 5a  32 2f 63 99 99 99 99 99  ┆ ,Tf3FD5Z2/c•••••
+3d 30 30 3d 30 31 3d 30  32 3d 30 33 3d 30 34 3d  ┆ =00=01=02=03=04=
+30 35 3d 30 36 3d 30 37  3d 30 38 3d 30 39 0a 3d  ┆ 05=06=07=08=09•=
+30 42 3d 30 43 0d 3d 30  45 3d 30 46 3d 31 30 3d  ┆ 0B=0C•=0E=0F=10=
+31 31 3d 31 32 3d 31 33  3d 31 34 3d 31 35 3d 31  ┆ 11=12=13=14=15=1
+36 3d 31 37 3d 31 38 3d  31 39 3d 31 41 3d 31 42  ┆ 6=17=18=19=1A=1B
+3d 31 43 3d 31 44 3d 31  45 3d 31 46 20 21 22 23  ┆ =1C=1D=1E=1F !"#
+24 25 26 27 28 29 2a 2b  2c 2d 3d 0a 2e 2f 30 31  ┆ $%&'()*+,-=•./01
 ----
 ====
 
@@ -2079,6 +2279,7 @@ A post-item repetition is:
 ** An <<leb128-integer,LEB128 integer>>.
 ** A <<string,string>>.
 ** A <<macro-expansion,macro-expansion>>.
+** A <<transformation-block,transformation block>>.
 ** A <<group,group>>.
 
 . The ``pass:[*]`` character.

@@ -25,14 +25,14 @@ import normand
 
 
 def test_init_labels():
-    labels = {"yo": 0x88, "meow": 123}  # type: normand.SymbolsT
+    labels = {"yo": 0x88, "meow": 123}  # type: normand.LabelsT
     res = normand.parse("11 22 {yo:8} 33", init_labels=labels.copy())
     assert res.data == bytearray([0x11, 0x22, 0x88, 0x33])
     assert res.labels == labels.copy()
 
 
 def test_init_vars():
-    variables = {"zoom": 0x88, "bateau": -123.45}  # type: normand.SymbolsT
+    variables = {"zoom": 0x88, "bateau": -123.45}  # type: normand.VariablesT
     res = normand.parse("11 22 {zoom:8} 33", init_variables=variables.copy())
     assert res.data == bytearray([0x11, 0x22, 0x88, 0x33])
     assert res.variables == variables.copy()
@@ -65,7 +65,7 @@ def test_init_bo_le():
 
 
 def test_final_labels():
-    labels = {"yo": 0x88, "meow": 123}  # type: normand.SymbolsT
+    labels = {"yo": 0x88, "meow": 123}  # type: normand.LabelsT
     res = normand.parse(
         "11 <june> 22 (77 <aug> 88) * 2 <kilo> 33", init_labels=labels.copy()
     )

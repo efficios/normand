@@ -1,0 +1,19 @@
+!transform quopri
+  "bonjour tout le monde"
+  <beg1> {ICITTE - beg1 : 8} * 15
+!end
+
+!t qp
+  "bonjour tout le monde"
+  <beg2> {ICITTE - beg2 : 8} * 15
+!end
+---
+62 6f 6e 6a 6f 75 72 20 74 6f 75 74 20 6c 65 20
+6d 6f 6e 64 65 3d 30 30 3d 30 31 3d 30 32 3d 30
+33 3d 30 34 3d 30 35 3d 30 36 3d 30 37 3d 30 38
+3d 30 39 0a 3d 30 42 3d 30 43 0d 3d 30 45
+
+62 6f 6e 6a 6f 75 72 20 74 6f 75 74 20 6c 65 20
+6d 6f 6e 64 65 3d 30 30 3d 30 31 3d 30 32 3d 30
+33 3d 30 34 3d 30 35 3d 30 36 3d 30 37 3d 30 38
+3d 30 39 0a 3d 30 42 3d 30 43 0d 3d 30 45

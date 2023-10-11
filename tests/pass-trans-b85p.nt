@@ -1,0 +1,17 @@
+!transform base85p
+  "bonjour tout le monde"
+  <beg1> {ICITTE - beg1 : 8} * 15
+!end
+
+!t b85p
+  "bonjour tout le monde"
+  <beg2> {ICITTE - beg2 : 8} * 15
+!end
+---
+56 73 43 44 30 5a 2a 5f 37 59 62 5a 3e 51 5a 41
+5a 25 71 49 5a 45 74 52 35 57 64 48 23 4a 30 7c
+57 26 49 32 4d 37 72 59 33 6b 28 65 6f
+
+56 73 43 44 30 5a 2a 5f 37 59 62 5a 3e 51 5a 41
+5a 25 71 49 5a 45 74 52 35 57 64 48 23 4a 30 7c
+57 26 49 32 4d 37 72 59 33 6b 28 65 6f

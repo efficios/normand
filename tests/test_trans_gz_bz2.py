@@ -21,46 +21,23 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-[tool.poetry]
-name = 'normand'
-version = '0.21.0'
-description = 'Text-to-binary processor with its own language'
-license = 'MIT'
-authors = ['Philippe Proulx <eeppeliteloop@gmail.com>']
-repository = 'https://github.com/efficios/normand'
-keywords = [
-    'normand',
-    'binary',
-]
-classifiers = [
-    'Development Status :: 3 - Alpha',
-    'Environment :: Console',
-    'Intended Audience :: Developers',
-    'License :: OSI Approved :: MIT License',
-    'Natural Language :: English',
-    'Operating System :: OS Independent',
-    'Topic :: Software Development :: Compilers',
-]
-packages = [{include = 'normand'}]
+import bz2
+import gzip
+import typing
 
-[tool.poetry.dependencies]
-python = '^3.4'
+import normand
 
-[tool.poetry.scripts]
-normand = 'normand.normand:_run_cli'
 
-[tool.poetry.urls]
-'Bug tracker' = 'https://github.com/efficios/normand/issues'
-'Code review' = 'https://review.lttng.org/admin/repos/normand'
+def _test_comp(type: str, dec_func: typing.Callable[[bytes], bytes]):
+    data = b"bonjour tout le monde \x00\x23\x42 \x17" + b"\x7b" * 500
+    ntext = "!t {} {} !end".format(type, data.hex())
+    res = normand.parse(ntext)
+    assert dec_func(res.data) == data
 
-[tool.isort]
-profile = 'black'
-length_sort = true
 
-[tool.pyright]
-typeCheckingMode = 'strict'
-reportTypeCommentUsage = false
+def test_gz():
+    _test_comp("gz", gzip.decompress)
 
-[build-system]
-requires = ['poetry-core']
-build-backend = 'poetry.core.masonry.api'
+
+def test_bz2():
+    _test_comp("bz2", bz2.decompress)

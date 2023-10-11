@@ -63,6 +63,9 @@ a#bonjour tout le monde#a#bonjour tout le monde#bb#bonjour tout le monde#
 # macro expansion
 #bonjour tout le monde#m#bonjour tout le monde#:#bonjour tout le monde#gang#bonjour tout le monde#(#bonjour tout le monde#0x44#bonjour tout le monde#,#bonjour tout le monde#0x88#bonjour tout le monde#)#bonjour tout le monde#
 
+# transformation block
+#bonjour tout le monde#!transform#bonjour tout le monde#b16#bonjour tout le monde#"salut"#bonjour tout le monde#!end#bonjour tout le monde#
+
 # post-item repetition
 "salut"#bonjour tout le monde#*#bonjour tout le monde#4
 ---
@@ -88,4 +91,5 @@ cc
 55 55 55
 77 77 77
 aa 44 bb 88
+37 33 36 31 36 43 37 35 37 34
 73 61 6c 75 74 73 61 6c 75 74 73 61 6c 75 74 73 61 6c 75 74
