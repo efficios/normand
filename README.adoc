@@ -915,9 +915,9 @@ A fixed-length number is:
 For a fixed-length number at some source location{nbsp}__**L**__, this
 expression may contain the name of any accessible <<label,label>> (not
 within a nested group), including the name of a label defined
-after{nbsp}__**L**__ (except within an <<encoded-block,encoded block>>),
-as well as the name of any <<variable-assignment,variable>> known
-at{nbsp}__**L**__.
+after{nbsp}__**L**__ (except within a
+<<transformation-block,transformation block>>), as well as the name of
+any <<variable-assignment,variable>> known at{nbsp}__**L**__.
 +
 The value of the special name `ICITTE` (`int` type) in this expression
 is the <<cur-offset,current offset>> (before encoding the number).
