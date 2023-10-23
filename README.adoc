@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Philippe Proulx <eeppeliteloop@gmail.com>
+// SPDX-License-Identifier: CC-BY-SA-4.0
+
 // Show ToC at a specific location for a GitHub rendering
 ifdef::env-github[]
 :toc: macro
@@ -2553,6 +2556,10 @@ $ normand <<< '"lol" * 10 0a'
 * https://microsoft.github.io/pyright/[Pyright]
 * https://github.com/psf/black[Black]
 * https://pycqa.github.io/isort/[isort]
+
+Licensing and copyright follows the
+https://reuse.software/tutorial/[REUSE] specification and is checked
+with the https://github.com/fsfe/reuse-tool[reuse tool].
 
 === Testing
 
