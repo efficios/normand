@@ -405,8 +405,8 @@ to your project to use it (both the <<python3-api,`normand.parse()`>>
 function and the <<command-line-tool,command-line tool>>).
 
 `normand.py` has _no external dependencies_, but if you're using
-Python{nbsp}3.4, you'll need a local copy of the standard `typing`
-module.
+Python{nbsp}3.4 or Python{nbsp}3.5, you'll need a local copy of the
+standard `typing` module.
 ====
 
 == Design goals
