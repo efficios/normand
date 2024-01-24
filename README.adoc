@@ -435,7 +435,7 @@ Concise and readable input::
 Compare the following Normand input and some hypothetical XML
 equivalent, for example:
 +
-.Actual normand input.
+.Actual Normand input.
 ----
 ff dd 01 ab $192 $-128 %1101:0011
 
